@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#000000" />
+<meta name="description" content="Outer Rim Patrol — a free-flight X-wing combat game. Fly full 3D patrol missions over asteroid belts, desert canyons, glaciers, gas-giant cloud decks, and volcanic plains." />
+<title>OUTER RIM PATROL — X-Wing Free Flight</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23000' stroke='%23ffe81f' stroke-width='4'/%3E%3Cpath d='M25 30 L50 55 L75 30 M25 70 L50 45 L75 70' fill='none' stroke='%23ffe81f' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="scene"></canvas>
+    <canvas id="hud"></canvas>
+
+    <!-- Static HUD frame (HTML/CSS) -->
+    <div id="frame" class="hidden" aria-hidden="true">
+      <div class="corner tl">
+        <div class="gauge">
+          <span class="glabel">HULL</span>
+          <div class="meter"><i id="hull-fill"></i></div>
+        </div>
+        <div class="gauge">
+          <span class="glabel">SHIELDS</span>
+          <div class="meter shield"><i id="shield-fill"></i></div>
+        </div>
+      </div>
+
+      <div class="corner tr">
+        <div class="readout"><span class="rlabel">SCORE</span><span id="score" class="rval">0</span></div>
+        <div class="readout"><span class="rlabel">TIME</span><span id="time" class="rval small">0:00</span></div>
+      </div>
+
+      <div class="corner bl">
+        <div class="throttle">
+          <span class="glabel">THROTTLE</span>
+          <div class="tbar"><i id="throttle-fill"></i></div>
+        </div>
+        <div class="throttle">
+          <span class="glabel">BOOST</span>
+          <div class="tbar"><i id="energy-fill"></i></div>
+        </div>
+      </div>
+
+      <div class="corner br">
+        <div class="readout"><span class="rlabel">TORPEDOES</span><span id="torps" class="rval small">6</span></div>
+        <div id="lock-status" class="lock-status hidden">LOCK</div>
+      </div>
+
+      <div id="objective" class="objective"></div>
+      <div id="banner" class="banner"></div>
+      <div id="warning" class="warning hidden">PULL UP</div>
+    </div>
+
+    <!-- Touch controls -->
+    <div id="touch" class="hidden">
+      <div id="stick-zone"><div id="stick-base"><div id="stick-knob"></div></div></div>
+      <button id="boost-btn" class="tbtn" aria-label="Boost">BOOST</button>
+      <button id="torp-btn" class="tbtn torp" aria-label="Fire torpedo">TORP</button>
+      <div id="thr-col">
+        <button id="thr-up" class="tbtn thr" aria-label="Throttle up">▲</button>
+        <button id="thr-dn" class="tbtn thr" aria-label="Throttle down">▼</button>
+      </div>
+    </div>
+
+    <!-- Menus -->
+    <div id="overlay" class="overlay">
+      <div id="loading" class="screen">
+        <div class="spinner"></div>
+        <p class="loading-txt">SPINNING UP FLIGHT COMPUTER…</p>
+      </div>
+
+      <div id="title" class="screen hidden">
+        <div class="crawl">A LONG TIME AGO IN A GALAXY FAR, FAR AWAY…</div>
+        <h1 class="logo">OUTER RIM<span>PATROL</span></h1>
+        <p class="tagline">X-WING FREE FLIGHT</p>
+        <p class="brief">Pick a patrol sector. Full flight control — climb, dive, roll, throttle. Clear the objectives and bring your fighter home.</p>
+        <div id="missions" class="missions" role="group" aria-label="Missions">
+          <button class="mcard" data-mission="belt">
+            <span class="planet p-belt"></span>
+            <span class="mname">KESSEL VERGE</span>
+            <span class="msub">ASTEROID BELT</span>
+            <span class="mobj">DESTROY THE RAIDER WING</span>
+            <span class="mbest">BEST <b data-best="belt">—</b></span>
+          </button>
+          <button class="mcard" data-mission="dunes">
+            <span class="planet p-dunes"></span>
+            <span class="mname">JAKKARA</span>
+            <span class="msub">DESERT WORLD</span>
+            <span class="mobj">CANYON RUN + RAIDERS</span>
+            <span class="mbest">BEST <b data-best="dunes">—</b></span>
+          </button>
+          <button class="mcard" data-mission="glacier">
+            <span class="planet p-glacier"></span>
+            <span class="mname">VORN</span>
+            <span class="msub">ICE WORLD</span>
+            <span class="mobj">HUNT THE PROBE DROIDS</span>
+            <span class="mbest">BEST <b data-best="glacier">—</b></span>
+          </button>
+          <button class="mcard" data-mission="clouds">
+            <span class="planet p-clouds"></span>
+            <span class="mname">BESHAR</span>
+            <span class="msub">GAS GIANT</span>
+            <span class="mobj">CLOUD SLALOM + RAIDERS</span>
+            <span class="mbest">BEST <b data-best="clouds">—</b></span>
+          </button>
+          <button class="mcard" data-mission="ember">
+            <span class="planet p-ember"></span>
+            <span class="mname">EMBERON</span>
+            <span class="msub">VOLCANIC WORLD</span>
+            <span class="mobj">DESTROY THE SHIELD GRID</span>
+            <span class="mbest">BEST <b data-best="ember">—</b></span>
+          </button>
+        </div>
+        <div class="row-under">
+          <button id="how-btn" class="btn ghost">HOW TO FLY</button>
+          <div class="diff-row" role="group" aria-label="Difficulty">
+            <button class="diff" data-diff="cadet">CADET</button>
+            <button class="diff sel" data-diff="pilot">PILOT</button>
+            <button class="diff" data-diff="ace">ACE</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="howto" class="screen hidden">
+        <h2 class="panel-title">FLIGHT MANUAL</h2>
+        <div class="manual">
+          <div class="mrow"><span class="mkeys">mouse / <kbd>◄►▲▼</kbd></span><span>pitch &amp; turn — the ship banks into turns</span></div>
+          <div class="mrow"><span class="mkeys"><kbd>A</kbd> <kbd>D</kbd></span><span>roll left / right</span></div>
+          <div class="mrow"><span class="mkeys"><kbd>W</kbd> <kbd>S</kbd></span><span>throttle up / down</span></div>
+          <div class="mrow"><span class="mkeys"><kbd>Shift</kbd></span><span>engine boost (drains, then recharges)</span></div>
+          <div class="mrow"><span class="mkeys"><kbd>Space</kbd> / click / <kbd>L</kbd></span><span>fire quad lasers</span></div>
+          <div class="mrow"><span class="mkeys"><kbd>F</kbd> / right-click</span><span>fire proton torpedo (needs a lock)</span></div>
+          <div class="mrow"><span class="mkeys"><kbd>P</kbd> / <kbd>Esc</kbd></span><span>pause</span></div>
+          <div class="mrow touch-only"><span class="mkeys">left stick</span><span>steer · lasers auto-fire · ▲▼ throttle</span></div>
+        </div>
+        <p class="hint-lock">Keep an enemy inside your reticle to build a <b>torpedo lock</b>. The gold diamond marks your next ring; the radar at the bottom shows hostiles around you. Watch your altitude — the <b>PULL UP</b> warning means terrain.</p>
+        <button id="how-back" class="btn primary">GOT IT</button>
+      </div>
+
+      <div id="pause" class="screen hidden">
+        <h2 class="panel-title">PAUSED</h2>
+        <button id="resume-btn" class="btn primary">RESUME</button>
+        <button id="abort-btn" class="btn ghost">ABORT TO MENU</button>
+      </div>
+
+      <div id="result" class="screen hidden">
+        <h2 id="result-title" class="panel-title">SECTOR CLEAR</h2>
+        <p id="result-msg" class="brief"></p>
+        <div class="stat-grid">
+          <div><span id="r-score">0</span><label>SCORE</label></div>
+          <div><span id="r-kills">0</span><label>KILLS</label></div>
+          <div><span id="r-time">0:00</span><label>TIME</label></div>
+          <div><span id="r-best">0</span><label>BEST</label></div>
+        </div>
+        <div class="menu-buttons">
+          <button id="again-btn" class="btn primary">FLY AGAIN</button>
+          <button id="next-btn" class="btn">NEXT SECTOR</button>
+          <button id="menu-btn" class="btn ghost">SECTOR MAP</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top-right utilities -->
+    <div id="util">
+      <button id="sound-btn" class="ubtn" aria-label="Sound on" aria-pressed="false" title="Sound">♪</button>
+      <button id="quality-btn" class="ubtn" aria-label="Graphics quality" title="Graphics quality">HIGH</button>
+      <button id="pause-btn" class="ubtn hidden" aria-label="Pause" title="Pause">⏸</button>
+    </div>
+  </div>
+
+  <noscript><p style="color:#fff;text-align:center;margin-top:2em">This game requires JavaScript and WebGL.</p></noscript>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
