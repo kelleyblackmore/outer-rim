@@ -403,7 +403,7 @@ function buildEmber(root, colliders, rng) {
 
   // lava sea fills every valley below y=4
   const lava = new THREE.Mesh(new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, 1, 1),
-    new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff4a10, emissiveIntensity: 1.6, roughness: 0.6 }));
+    new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff4a10, emissiveIntensity: 2.3, roughness: 0.6 }));
   lava.rotation.x = -Math.PI / 2;
   lava.position.y = 4;
   root.add(lava);
@@ -439,11 +439,11 @@ function buildEmber(root, colliders, rng) {
   return {
     getHeight: heightFn,
     lavaY: 4,
-    atmosphere: { bg: 0x0a0405, fog: 0x1c0906, fogDensity: 0.00075, hemiSky: 0x3a1410, hemiGround: 0x140503, hemiI: 0.5,
-      keyColor: 0xff6a3a, keyI: 0.55, keyPos: [-600, 700, 300], fillColor: 0x801f10, fillI: 0.3, exposure: 1.22 },
+    atmosphere: { bg: 0x0a0405, fog: 0x220b07, fogDensity: 0.0006, hemiSky: 0x54201a, hemiGround: 0x1c0805, hemiI: 0.75,
+      keyColor: 0xff6a3a, keyI: 0.8, keyPos: [-600, 700, 300], fillColor: 0x801f10, fillI: 0.35, exposure: 1.28 },
     spawn: { x: 0, y: heightFn(0, 900) + 90, z: 900 },
     update: (dt, t) => {
-      lava.material.emissiveIntensity = 1.5 + Math.sin(t * 1.7) * 0.25;
+      lava.material.emissiveIntensity = 2.2 + Math.sin(t * 1.7) * 0.35;
       const a = egeo.attributes.position;
       for (let i = 0; i < ecount; i++) {
         let y = a.getY(i) + dt * (6 + (i % 5));

@@ -113,8 +113,8 @@ export function createInput(canvas) {
     if (keys['arrowright']) kx += 1;
     if (keys['arrowup']) ky += 1;
     if (keys['arrowdown']) ky -= 1;
-    if (keys['a']) kr -= 1;
-    if (keys['d']) kr += 1;
+    if (keys['a'] || keys['q']) kr -= 1;   // Q/E spin the ship, same as A/D
+    if (keys['d'] || keys['e']) kr += 1;
     if (keys['w'] || keys['__thrUp']) kt += 1;
     if (keys['s'] || keys['__thrDn']) kt -= 1;
 

@@ -20,7 +20,7 @@ same engine philosophy, but free flight instead of rails.
 ## Controls
 
 - **Mouse / arrow keys** — pitch & turn (the ship banks into turns)
-- **A / D** — roll · **W / S** — throttle · **Shift** — boost
+- **Q / E** (or **A / D**) — spin/roll · **W / S** — throttle · **Shift** — boost
 - **Space / click / L** — quad lasers
 - **F / right-click** — proton torpedo (hold an enemy in the reticle to lock)
 - **P / Esc** — pause
