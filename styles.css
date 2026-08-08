@@ -118,6 +118,13 @@ canvas#hud{position:absolute;inset:0;width:100%;height:100%;display:block;pointe
 .p-glacier{background:radial-gradient(circle at 36% 32%,#eaf6ff,#9cc8e8 55%,#4c7cb0);}
 .p-clouds{background:radial-gradient(circle at 36% 32%,#ffd2b0,#e08a6a 45%,#9c4f63 75%,#5e3050);}
 .p-ember{background:radial-gradient(circle at 36% 32%,#ff9a52,#b03a1a 50%,#3a120a);}
+.p-deathstar{background:radial-gradient(circle at 36% 32%,#b8bfc9,#6a7280 55%,#2e3440);position:relative;}
+.p-deathstar::before{content:"";position:absolute;left:9px;top:11px;width:17px;height:17px;border-radius:50%;
+  background:radial-gradient(circle at 42% 38%,#8a93a2,#454c59 72%);box-shadow:inset -2px -2px 4px rgba(0,0,0,.55);}
+.p-deathstar::after{content:"";position:absolute;left:2px;top:31px;width:54px;height:2px;background:rgba(20,24,32,.75);}
+.p-starkiller{background:radial-gradient(circle at 36% 32%,#eef6ff,#a8c4dc 55%,#4c6a8a);position:relative;overflow:hidden;}
+.p-starkiller::after{content:"";position:absolute;left:-4px;top:25px;width:66px;height:5px;
+  background:linear-gradient(90deg,rgba(255,60,40,0),rgba(255,90,50,.95),rgba(255,60,40,0));box-shadow:0 0 8px rgba(255,80,50,.8);}
 .mname{font-size:14px;font-weight:800;letter-spacing:2px;color:#eaf2ff;}
 .msub{font-size:9px;letter-spacing:2.5px;color:var(--blue);}
 .mobj{font-size:9px;letter-spacing:1.5px;color:#8794a6;min-height:22px;}

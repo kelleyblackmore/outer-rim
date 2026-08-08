@@ -214,6 +214,95 @@ export function buildTurret() {
   return g;
 }
 
+// ---------------- TURBOLASER TOWER (Death Star surface gun) ----------------
+export function buildTower() {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.4, 2.2), M.towerA);
+  base.position.y = 1.2;
+  g.add(base);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.7), M.towerB);
+  head.position.y = 2.9;
+  g.add(head);
+  const barrelGeo = new THREE.CylinderGeometry(0.14, 0.14, 2.2, 8);
+  for (const s of [-1, 1]) {
+    const b = new THREE.Mesh(barrelGeo, M.towerB);
+    b.rotation.x = Math.PI / 2.4;
+    b.position.set(s * 0.4, 3.1, -1.0);
+    g.add(b);
+  }
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), M.warn.clone());
+  light.position.set(0, 3.7, 0);
+  g.add(light);
+  for (let i = 0; i < 3; i++) {
+    const s = new THREE.Mesh(new THREE.BoxGeometry(2.24, 0.14, 0.4), M.towerB);
+    s.position.set(0, 0.5 + i * 0.7, 0);
+    g.add(s);
+  }
+  g.userData.light = light;
+  g.scale.setScalar(2.0);
+  return g;
+}
+
+// ---------------- THERMAL EXHAUST PORT ----------------
+export function buildPort() {
+  const g = new THREE.Group();
+  const housing = new THREE.Mesh(new THREE.BoxGeometry(11, 2.4, 11), M.towerA);
+  g.add(housing);
+  const recess = new THREE.Mesh(new THREE.BoxGeometry(6.8, 1.8, 6.8), M.towerB);
+  recess.position.y = 0.7;
+  g.add(recess);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.32, 10, 28), M.ringHot.clone());
+  ring.rotation.x = Math.PI / 2; ring.position.y = 1.7;
+  g.add(ring);
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(2.1, 24),
+    new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x1a0f00, emissiveIntensity: 0.4 }));
+  hole.rotation.x = -Math.PI / 2; hole.position.y = 1.72;
+  g.add(hole);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3.2, 1.4), M.towerB);
+    b.position.set(sx * 4.4, 0.8, sz * 4.4);
+    g.add(b);
+  }
+  g.userData.ring = ring;
+  return g;
+}
+
+// ---------------- THERMAL OSCILLATOR (Starkiller Base) ----------------
+export function buildOscillator() {
+  const g = new THREE.Group();
+  // hexagonal fortress ring sunk into the crater
+  const hull = new THREE.Mesh(new THREE.CylinderGeometry(120, 150, 64, 6), M.towerA);
+  hull.position.y = 32;
+  g.add(hull);
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(86, 112, 26, 6), M.towerB);
+  crown.position.y = 76;
+  g.add(crown);
+  // glowing thermal vent — the weak point (faces +Z)
+  const vent = new THREE.Mesh(new THREE.BoxGeometry(34, 16, 4),
+    new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff3418, emissiveIntensity: 2.6, roughness: 0.4 }));
+  vent.position.set(0, 30, 128);
+  g.add(vent);
+  const ventFrame = new THREE.Mesh(new THREE.BoxGeometry(44, 26, 6), M.towerB);
+  ventFrame.position.set(0, 30, 125);
+  g.add(ventFrame);
+  // antenna spires + hull greebles
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+    const spire = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 2.4, 46, 6), M.towerB);
+    spire.position.set(Math.cos(a) * 94, 108, Math.sin(a) * 94);
+    g.add(spire);
+    const blk = new THREE.Mesh(new THREE.BoxGeometry(26, 18, 26), M.towerB);
+    blk.position.set(Math.cos(a) * 132, 14, Math.sin(a) * 132);
+    g.add(blk);
+  }
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 8), M.warn.clone());
+  beacon.position.y = 92;
+  g.add(beacon);
+  g.userData.vent = vent;
+  g.userData.beacon = beacon;
+  return g;
+}
+
 // ---------------- RING GATE (mission waypoint) ----------------
 export function buildRing() {
   const g = new THREE.Group();

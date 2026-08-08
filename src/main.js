@@ -49,6 +49,7 @@ const runner = createMissionRunner({
   onBanner: (t, warn) => hud.banner(t, warn),
   onObjective: t => hud.setObjective(t),
   onComplete: () => finish(true),
+  onFail: msg => finish(false, msg),
 });
 
 // ---------------- persisted settings ----------------
@@ -123,7 +124,7 @@ function startMission(id) {
   state = 'playing'; showScreen(null); setPlayingUI(true);
 }
 
-function finish(won) {
+function finish(won, failMsg) {
   if (state !== 'playing') return;
   state = 'result';
   const def = MISSIONS[currentMission];
@@ -135,10 +136,10 @@ function finish(won) {
   const best = bestFor(currentMission);
   if (won && systems.run.score > best) localStorage.setItem(LS_PREFIX + 'best.' + currentMission, systems.run.score);
   const title = $('result-title');
-  title.textContent = won ? 'SECTOR CLEAR' : 'X-WING DOWN';
+  title.textContent = won ? (def.winTitle || 'SECTOR CLEAR') : (failMsg ? 'MISSION FAILED' : 'X-WING DOWN');
   title.classList.toggle('fail', !won);
   $('result-msg').textContent = won ? def.winMsg
-    : 'Your fighter was lost on patrol. Another pilot will have to finish the job.';
+    : (failMsg || 'Your fighter was lost on patrol. Another pilot will have to finish the job.');
   $('r-score').textContent = systems.run.score;
   $('r-kills').textContent = systems.run.kills;
   $('r-time').textContent = hud.fmtTime(systems.run.time);

@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { buildRing } from './models.js';
 
-export const MISSION_ORDER = ['belt', 'dunes', 'glacier', 'clouds', 'ember'];
+export const MISSION_ORDER = ['belt', 'dunes', 'glacier', 'clouds', 'ember', 'deathstar', 'starkiller'];
 
 export const MISSIONS = {
   belt: {
@@ -51,10 +51,68 @@ export const MISSIONS = {
       { type: 'clear', enemy: 'tie', count: 5, waves: 1, banner: 'GARRISON SCRAMBLED — FINISH THIS' },
     ],
   },
+  deathstar: {
+    id: 'deathstar', name: 'DEATH STAR',
+    par: 420, timeLimit: 420,
+    winTitle: 'GREAT SHOT, KID',
+    winMsg: 'That was one in a million! The torpedoes are in — the Death Star is gone, and Yavin lives to see the dawn.',
+    failMsg: 'The Death Star cleared the planet and fired. Yavin base is gone.',
+    // full turret grid: turbolaser towers flanking the trench, emplacements inside it
+    setup({ systems, flight }) {
+      const towers = [], guns = [];
+      for (let i = 0; i < 12; i++) {
+        const x = (i % 2 ? 1 : -1) * (44 + Math.random() * 170);
+        const z = 1100 - i * 200;
+        towers.push({ x, y: flight.floorAt(x, z), z });
+      }
+      for (let i = 0; i < 10; i++) {
+        const x = (i % 2 ? 1 : -1) * 13;
+        const z = 400 - i * 175;
+        guns.push({ x, y: flight.floorAt(x, z), z });
+      }
+      systems.spawnTurrets(towers, 'tower');
+      systems.spawnTurrets(guns, 'turret');
+    },
+    phases: [
+      { type: 'clear', enemy: 'tie', count: 6, waves: 2, banner: 'TIE PATROL INBOUND — CLEAR THE APPROACH' },
+      { type: 'goto', at: { x: 0, z: 860 }, alt: 16, radius: 55, text: 'DIVE INTO THE TRENCH',
+        banner: 'BEGIN YOUR ATTACK RUN — DIVE INTO THE TRENCH' },
+      { type: 'clear', enemy: 'port', count: 1, spawnPort: { x: 0, z: -1400 }, ties: 3, silenceTurrets: true,
+        text: 'TORPEDO THE EXHAUST PORT',
+        banner: 'THE GUNS HAVE STOPPED — FIGHTERS BEHIND YOU. STAY ON TARGET' },
+    ],
+  },
+  starkiller: {
+    id: 'starkiller', name: 'STARKILLER BASE',
+    par: 360, timeLimit: 360,
+    winTitle: 'OSCILLATOR BREACHED',
+    winMsg: 'The oscillator is down and the planet is tearing itself apart. All wings, pull up and jump clear.',
+    failMsg: 'The sun is gone — Starkiller has fired on the Resistance base.',
+    // oscillator (shielded until phase 2) + its turret ring
+    setup({ systems, flight, world }) {
+      const site = world.oscSite;
+      const oy = flight.floorAt(site.x, site.z);
+      systems.spawnOscillator({ x: site.x, y: oy, z: site.z }, true);
+      const ring = [];
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const r = 320 + (i % 3) * 90;
+        const x = site.x + Math.cos(a) * r, z = site.z + Math.sin(a) * r;
+        ring.push({ x, y: flight.floorAt(x, z), z });
+      }
+      systems.spawnTurrets(ring, 'turret');
+    },
+    phases: [
+      { type: 'clear', enemy: 'tie', count: 6, waves: 2, banner: 'SPECIAL FORCES TIES INBOUND' },
+      { type: 'clear', enemy: 'oscillator', count: 1, unshield: 'oscillator', ties: 3,
+        text: 'DESTROY THE THERMAL OSCILLATOR',
+        banner: 'SHIELDS DOWN — HIT THE OSCILLATOR VENT, EVERY RUN COUNTS' },
+    ],
+  },
 };
 
 export function createMissionRunner(ctx) {
-  const { systems, flight, audio, onBanner, onObjective, onComplete } = ctx;
+  const { systems, flight, audio, onBanner, onObjective, onComplete, onFail } = ctx;
   const ship = flight.ship;
 
   let def = null, world = null, scene = null;
@@ -64,6 +122,9 @@ export function createMissionRunner(ctx) {
   let toSpawn = 0, waveSize = 0;
   let killTally = 0;
   let done = false;
+  let gotoPoint = null;
+  let lastObj = null;
+  const warned = new Set();
   const prevShip = new THREE.Vector3();
   const V = new THREE.Vector3(), V2 = new THREE.Vector3();
 
@@ -75,8 +136,10 @@ export function createMissionRunner(ctx) {
   function start(missionDef, worldRef, sceneRef) {
     def = missionDef; world = worldRef; scene = sceneRef;
     phaseIdx = -1; done = false;
+    warned.clear(); lastObj = null; gotoPoint = null;
     clearRings();
     prevShip.copy(ship.position);
+    if (def.setup) def.setup({ systems, flight, world });
     nextPhase();
   }
 
@@ -147,7 +210,17 @@ export function createMissionRunner(ctx) {
     if (phase.type === 'rings') {
       clearRings();
       buildCourse(phase.count);
+    } else if (phase.type === 'goto') {
+      const y = flight.floorAt(phase.at.x, phase.at.z);
+      gotoPoint = new THREE.Vector3(phase.at.x, (y === -Infinity ? 0 : y) + (phase.alt ?? 20), phase.at.z);
     } else if (phase.type === 'clear') {
+      if (phase.spawnPort) {
+        const p = phase.spawnPort;
+        systems.spawnPort({ x: p.x, y: flight.floorAt(p.x, p.z) + 1.4, z: p.z });
+      }
+      if (phase.unshield) systems.setShielded(phase.unshield, false);
+      if (phase.silenceTurrets) systems.setTurretsSilent(true);
+      if (phase.ties) systems.spawnTies(phase.ties);
       if (phase.enemy === 'tie') {
         const waves = phase.waves || 1;
         waveSize = Math.ceil(phase.count / waves);
@@ -191,16 +264,44 @@ export function createMissionRunner(ctx) {
     return out;
   }
 
-  function refreshObjective() {
-    if (!phase) { onObjective(''); return; }
-    if (phase.type === 'rings') onObjective(`NAV RINGS  ${nextRing} / ${phase.count}`);
-    else if (phase.enemy === 'tie') onObjective(`RAIDERS DOWN  ${killTally} / ${phase.count}`);
-    else if (phase.enemy === 'probe') onObjective(`PROBES DESTROYED  ${killTally} / ${phase.count}`);
-    else if (phase.enemy === 'generator') onObjective(`GENERATORS DOWN  ${killTally} / ${phase.count}`);
+  function objectiveText() {
+    if (!phase) return '';
+    let t = '';
+    if (phase.type === 'rings') t = `NAV RINGS  ${nextRing} / ${phase.count}`;
+    else if (phase.type === 'goto') t = phase.text || 'REACH THE MARKER';
+    else if (phase.enemy === 'tie') t = `RAIDERS DOWN  ${killTally} / ${phase.count}`;
+    else if (phase.enemy === 'probe') t = `PROBES DESTROYED  ${killTally} / ${phase.count}`;
+    else if (phase.enemy === 'generator') t = `GENERATORS DOWN  ${killTally} / ${phase.count}`;
+    else if (phase.enemy === 'port') t = phase.text || 'TORPEDO THE EXHAUST PORT';
+    else if (phase.enemy === 'oscillator') {
+      const o = systems.oscillators[0];
+      t = `OSCILLATOR INTEGRITY  ${Math.max(0, Math.round(o.hp / 24 * 100))}%`;
+    }
+    if (def && def.timeLimit) {
+      const rem = Math.max(0, def.timeLimit - systems.run.time);
+      const m = Math.floor(rem / 60), s = String(Math.floor(rem % 60)).padStart(2, '0');
+      t += `   ·   ${rem <= 60 ? '⚠ ' : ''}${m}:${s}`;
+    }
+    return t;
   }
+  function refreshObjective() { lastObj = null; }
 
   function update(dt) {
     if (!phase || done) return;
+
+    // the superweapon countdown — banners at thresholds, mission fail at zero
+    if (def.timeLimit) {
+      const rem = def.timeLimit - systems.run.time;
+      if (world.setCharge) world.setCharge(systems.run.time / def.timeLimit);
+      for (const th of [120, 60, 30, 10]) {
+        if (rem <= th && !warned.has(th)) {
+          warned.add(th);
+          onBanner(th >= 60 ? `${th / 60} MINUTE${th > 60 ? 'S' : ''} REMAINING` : `${th} SECONDS`, true);
+          audio.warn();
+        }
+      }
+      if (rem <= 0) { done = true; onFail(def.failMsg || 'OUT OF TIME'); return; }
+    }
 
     if (phase.type === 'rings') {
       // ring pass: ship crossed the ring plane within the ring radius
@@ -228,6 +329,8 @@ export function createMissionRunner(ctx) {
       // spin the hot ring's pods gently
       const hot = ringMeshes[nextRing];
       if (hot) hot.grp.rotation.z += dt * 0.4;
+    } else if (phase.type === 'goto') {
+      if (gotoPoint && ship.position.distanceTo(gotoPoint) < (phase.radius || 50)) nextPhase();
     } else if (phase.type === 'clear') {
       if (phase.enemy === 'tie') {
         if (toSpawn > 0 && systems.aliveCount('tie') === 0) {
@@ -241,6 +344,9 @@ export function createMissionRunner(ctx) {
       }
     }
     prevShip.copy(ship.position);
+
+    const txt = objectiveText();
+    if (txt !== lastObj) { lastObj = txt; onObjective(txt); }
   }
 
   // HUD objective info: guidance point + ring list for radar/markers
@@ -250,9 +356,14 @@ export function createMissionRunner(ctx) {
       const rg = ringMeshes[nextRing];
       return { point: rg ? rg.pos : null, rings: ringMeshes, nextRing };
     }
+    if (phase.type === 'goto') {
+      return gotoPoint ? { point: gotoPoint, rings: [{ pos: gotoPoint }], nextRing: 0 } : null;
+    }
     // nearest alive target of the phase kind
     let best = null, bestD = Infinity;
-    const pool = phase.enemy === 'tie' ? systems.ties : phase.enemy === 'probe' ? systems.probes : systems.generators;
+    const pool = phase.enemy === 'tie' ? systems.ties : phase.enemy === 'probe' ? systems.probes
+      : phase.enemy === 'port' ? systems.ports : phase.enemy === 'oscillator' ? systems.oscillators
+      : systems.generators;
     for (const e of pool) {
       if (!e.active) continue;
       const d = e.grp.position.distanceToSquared(ship.position);

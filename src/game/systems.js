@@ -1,7 +1,7 @@
 // systems.js — combat & entities: lasers, torpedoes, TIE/probe/turret/generator
 // AI, particles, damage, targeting, HUD snapshot (radar + off-screen arrows).
 import * as THREE from 'three';
-import { buildTIE, buildProbe, buildTurret, buildGenerator } from './models.js';
+import { buildTIE, buildProbe, buildTurret, buildGenerator, buildTower, buildPort, buildOscillator } from './models.js';
 
 const DIFF = {
   cadet: { dmg: 0.7, fire: 2.2, espeed: 60, aimErr: 5.2, regen: 8 },
@@ -10,7 +10,9 @@ const DIFF = {
 };
 
 const LASER_SPEED = 440, ELASER_SPEED = 290, TORP_SPEED = 250;
-const SCORE = { tie: 100, probe: 75, turret: 150, generator: 400 };
+const SCORE = { tie: 100, probe: 75, turret: 150, generator: 400, port: 2000, oscillator: 2000 };
+const TORP_DMG = { generator: 4, oscillator: 4 };          // everything else dies outright
+const BIG_BOOM = { generator: true, port: true, oscillator: true };
 
 export function createSystems(ctx) {
   const { scene, camera, engine, audio, input, flight, onLose, onBanner } = ctx;
@@ -25,7 +27,7 @@ export function createSystems(ctx) {
     m.visible = false; scene.add(m); return m;
   };
   const pLasers = Array.from({ length: 64 }, () => ({ mesh: mkBolt(0xff2b2b), active: false, vel: new THREE.Vector3(), prev: new THREE.Vector3(), ttl: 0 }));
-  const eLasers = Array.from({ length: 64 }, () => ({ mesh: mkBolt(0x7dff4a), active: false, vel: new THREE.Vector3(), prev: new THREE.Vector3(), ttl: 0 }));
+  const eLasers = Array.from({ length: 96 }, () => ({ mesh: mkBolt(0x7dff4a), active: false, vel: new THREE.Vector3(), prev: new THREE.Vector3(), ttl: 0 }));
   const torps = Array.from({ length: 4 }, () => ({ mesh: mkBolt(0xffd34d, 2.2, 0.5), active: false, dir: new THREE.Vector3(), target: null, ttl: 0, prev: new THREE.Vector3() }));
 
   const ties = Array.from({ length: 10 }, () => {
@@ -39,15 +41,30 @@ export function createSystems(ctx) {
     const g = buildProbe(); g.visible = false; scene.add(g);
     return { kind: 'probe', grp: g, active: false, vel: new THREE.Vector3(), baseY: 0, phase: 0, hp: 2, fireCd: 3, r: 2.6 };
   });
-  const turrets = Array.from({ length: 10 }, () => {
-    const g = buildTurret(); g.visible = false; scene.add(g);
-    return { kind: 'turret', grp: g, active: false, vel: new THREE.Vector3(), hp: 3, fireCd: 2, burst: 0, burstT: 0, r: 3.2, aimY: 2.6 };
+  // turret slots carry both a squat emplacement and a tall turbolaser tower;
+  // spawnTurrets picks which silhouette a slot wears
+  const turrets = Array.from({ length: 28 }, () => {
+    const g = new THREE.Group();
+    const turretM = buildTurret(), towerM = buildTower();
+    g.add(turretM); g.add(towerM);
+    g.visible = false; scene.add(g);
+    return { kind: 'turret', grp: g, turretM, towerM, light: turretM.userData.light,
+      active: false, vel: new THREE.Vector3(), hp: 3, fireCd: 2, burst: 0, burstT: 0, r: 3.2, aimY: 2.6 };
   });
   const generators = Array.from({ length: 6 }, () => {
     const g = buildGenerator(); g.visible = false; scene.add(g);
     return { kind: 'generator', grp: g, active: false, vel: new THREE.Vector3(), hp: 8, r: 7.5, aimY: 3 };
   });
-  const HOSTILE_POOLS = [ties, probes, turrets, generators];
+  const ports = Array.from({ length: 1 }, () => {
+    const g = buildPort(); g.visible = false; scene.add(g);
+    return { kind: 'port', grp: g, active: false, vel: new THREE.Vector3(), hp: 1, r: 5.5, aimY: 1.5 };
+  });
+  const oscillators = Array.from({ length: 1 }, () => {
+    const g = buildOscillator(); g.visible = false; scene.add(g);
+    return { kind: 'oscillator', grp: g, active: false, vel: new THREE.Vector3(), hp: 24, r: 26,
+      aimOff: new THREE.Vector3(0, 30, 128), shielded: false };
+  });
+  const HOSTILE_POOLS = [ties, probes, turrets, generators, ports, oscillators];
 
   const shardGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
   const particles = Array.from({ length: 240 }, () => {
@@ -76,7 +93,7 @@ export function createSystems(ctx) {
     run.hull = 100; run.shields = 100; run.score = 0; run.kills = 0; run.time = 0;
     run.torps = 6; run.hurt = 0; run.shieldCd = 0; run.over = false;
     run.lock = 0; run.locked = false; run.lockTarget = null;
-    fireCd = 0;
+    fireCd = 0; torpCd = 0; turretsSilent = false;
     pLasers.concat(eLasers).forEach(l => { l.active = false; l.mesh.visible = false; });
     torps.forEach(t => { t.active = false; t.mesh.visible = false; t.target = null; });
     clearHostiles();
@@ -133,16 +150,39 @@ export function createSystems(ctx) {
       p.active = true; p.grp.visible = true;
     }
   }
-  function spawnTurrets(positions) {
+  function spawnTurrets(positions, style = 'turret') {
     let i = 0;
     for (const t of turrets) {
       if (t.active || i >= positions.length) continue;
       const pos = positions[i++];
       t.grp.position.set(pos.x, pos.y, pos.z);
+      const tower = style === 'tower';
+      t.turretM.visible = !tower; t.towerM.visible = tower;
+      t.light = (tower ? t.towerM : t.turretM).userData.light;
+      t.aimY = tower ? 6.2 : 2.6;
+      t.r = tower ? 4.2 : 3.2;
       t.hp = 3; t.fireCd = 1.5 + Math.random() * 2; t.burst = 0;
       t.active = true; t.grp.visible = true;
     }
   }
+  function spawnPort(pos) {
+    const p = ports[0];
+    p.grp.position.set(pos.x, pos.y, pos.z);
+    p.hp = 1; p.active = true; p.grp.visible = true;
+    return p;
+  }
+  function spawnOscillator(pos, shielded) {
+    const o = oscillators[0];
+    o.grp.position.set(pos.x, pos.y, pos.z);
+    o.hp = 24; o.shielded = !!shielded; o.active = true; o.grp.visible = true;
+    return o;
+  }
+  function setShielded(kind, on) {
+    for (const e of hostiles()) if (e.kind === kind) e.shielded = on;
+  }
+  // "the guns — they've stopped": turrets hold fire but stay targetable
+  let turretsSilent = false;
+  function setTurretsSilent(v) { turretsSilent = v; }
   function spawnGenerators(positions) {
     let i = 0;
     for (const g of generators) {
@@ -172,10 +212,13 @@ export function createSystems(ctx) {
     audio.laser();
   }
 
+  let torpCd = 0;
   function fireTorpedo() {
+    if (torpCd > 0) return;
     if (run.torps <= 0) { audio.warn(); return; }
     const t = torps.find(x => !x.active);
     if (!t) return;
+    torpCd = 0.6;
     run.torps--;
     t.mesh.position.copy(ship.position);
     flight.forward(t.dir);
@@ -286,7 +329,8 @@ export function createSystems(ctx) {
       // yaw the whole turret toward the player
       V.copy(ship.position); V.y = t.grp.position.y;
       t.grp.lookAt(V);
-      if (t.grp.userData.light) t.grp.userData.light.material.emissiveIntensity = 2 + Math.sin(run.time * 8) * 1.2;
+      if (t.light) t.light.material.emissiveIntensity = 2 + Math.sin(run.time * 8) * 1.2;
+      if (turretsSilent) continue;
       const dist = t.grp.position.distanceTo(ship.position);
       if (t.burst > 0) {
         t.burstT -= dt;
@@ -311,13 +355,31 @@ export function createSystems(ctx) {
       if (g.grp.userData.ring) g.grp.userData.ring.material.emissiveIntensity = 2 + Math.sin(run.time * 2.4) * 0.8;
       if (g.grp.userData.tip) g.grp.userData.tip.material.emissiveIntensity = 2 + Math.sin(run.time * 6) * 1.2;
     }
+    for (const p of ports) {
+      if (!p.active) continue;
+      if (p.grp.userData.ring) p.grp.userData.ring.material.emissiveIntensity = 2.4 + Math.sin(run.time * 5) * 1.0;
+    }
+    for (const o of oscillators) {
+      if (!o.active) continue;
+      if (o.grp.userData.vent) o.grp.userData.vent.material.emissiveIntensity =
+        o.shielded ? 0.8 : 2.4 + Math.sin(run.time * 3) * 0.9;
+      if (o.grp.userData.beacon) o.grp.userData.beacon.material.emissiveIntensity = 2 + Math.sin(run.time * 8) * 1.2;
+    }
   }
 
   function killTarget(e) {
     e.active = false; e.grp.visible = false;
-    const big = e.kind === 'generator';
+    const big = !!BIG_BOOM[e.kind];
     run.score += SCORE[e.kind]; run.kills++;
     explode(targetCenter(e, V), big);
+    if (e.kind === 'port' || e.kind === 'oscillator') {
+      // finale: chain of secondary blasts
+      for (let i = 0; i < 4; i++) {
+        targetCenter(e, V);
+        V2.set((Math.random() - 0.5) * 50, Math.random() * 26, (Math.random() - 0.5) * 50).add(V);
+        explode(V2, true);
+      }
+    }
     audio.explosion(big);
     if (run.lockTarget === e) { run.lockTarget = null; run.lock = 0; run.locked = false; }
     if (onKill) onKill(e.kind);
@@ -325,7 +387,8 @@ export function createSystems(ctx) {
 
   function targetCenter(e, out) {
     out.copy(e.grp.position);
-    if (e.aimY) out.y += e.aimY;
+    if (e.aimOff) out.add(e.aimOff);
+    else if (e.aimY) out.y += e.aimY;
     return out;
   }
 
@@ -352,8 +415,10 @@ export function createSystems(ctx) {
       if (world && world.getHeight && l.mesh.position.y < flight.floorAt(l.mesh.position.x, l.mesh.position.z)) {
         spark(l.mesh.position); l.active = false; l.mesh.visible = false; continue;
       }
-      // hostiles
+      // hostiles (the exhaust port is ray-shielded — torpedoes only; shielded
+      // structures shrug lasers off entirely)
       for (const e of hostiles()) {
+        if (e.kind === 'port' || e.shielded) continue;
         targetCenter(e, V3);
         if (segHit(l.prev, l.mesh.position, V3, e.r + 0.6)) {
           e.hp -= 1;
@@ -408,11 +473,12 @@ export function createSystems(ctx) {
       t.ttl -= dt;
       let dead = t.ttl <= 0;
       if (world && world.getHeight && t.mesh.position.y < flight.floorAt(t.mesh.position.x, t.mesh.position.z)) dead = true;
-      // proximity fuse on any hostile
+      // proximity fuse on any unshielded hostile
       for (const e of hostiles()) {
+        if (e.shielded) continue;
         targetCenter(e, V3);
         if (segHit(t.prev, t.mesh.position, V3, e.r + 2.2)) {
-          e.hp -= e.kind === 'generator' ? 4 : 99;
+          e.hp -= TORP_DMG[e.kind] || 99;
           if (e.hp <= 0) killTarget(e); else { explode(t.mesh.position, false); audio.explosion(false); }
           dead = true;
           break;
@@ -430,6 +496,7 @@ export function createSystems(ctx) {
     flight.forward(_fwd);
     let best = null, bestAngle = 0.16;
     for (const e of hostiles()) {
+      if (e.shielded) continue;
       targetCenter(e, V);
       V.sub(ship.position);
       const dist = V.length();
@@ -521,7 +588,7 @@ export function createSystems(ctx) {
     flight.update(dt, (dmg) => hurtPlayer(dmg));
 
     // weapons
-    fireCd -= dt;
+    fireCd -= dt; torpCd -= dt;
     if (input.state.fire && fireCd <= 0) { firePlayerLasers(); fireCd = 0.115; }
     if (input.state.torpedoEdge) fireTorpedo();
 
@@ -642,7 +709,8 @@ export function createSystems(ctx) {
 
   return {
     run, reset, update, setWorld, setOnKill, hudSnapshot, hurtPlayer,
-    spawnTies, spawnProbes, spawnTurrets, spawnGenerators, clearHostiles, aliveCount,
-    explode, ties, probes, turrets, generators, pLasers, eLasers, torpPool: torps,
+    spawnTies, spawnProbes, spawnTurrets, spawnGenerators, spawnPort, spawnOscillator, setShielded, setTurretsSilent,
+    clearHostiles, aliveCount,
+    explode, ties, probes, turrets, generators, ports, oscillators, pLasers, eLasers, torpPool: torps,
   };
 }

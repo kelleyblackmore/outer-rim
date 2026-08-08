@@ -40,7 +40,8 @@ export function createHud(canvas) {
     }
   }
 
-  const KIND_COLOR = { tie: 'rgba(120,200,255,0.55)', probe: 'rgba(255,170,80,0.6)', turret: 'rgba(255,120,80,0.6)', generator: 'rgba(140,150,255,0.65)' };
+  const KIND_COLOR = { tie: 'rgba(120,200,255,0.55)', probe: 'rgba(255,170,80,0.6)', turret: 'rgba(255,120,80,0.6)',
+    generator: 'rgba(140,150,255,0.65)', port: 'rgba(255,211,77,0.85)', oscillator: 'rgba(255,90,50,0.8)' };
 
   function render(s) {
     ctx.clearRect(0, 0, W, H);

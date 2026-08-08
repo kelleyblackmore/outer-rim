@@ -11,6 +11,8 @@ sectors, each a different biome with its own missions:
 | **VORN** | Ice world | Hunt the probe droids before they report in |
 | **BESHAR** | Gas giant | Ring slalom over the cloud deck, then raiders |
 | **EMBERON** | Volcanic world | Take down the turret-guarded shield grid |
+| **DEATH STAR** | Battle of Yavin | Fight through the turbolaser grid, dive into the trench, torpedo the exhaust port before the station clears Yavin |
+| **STARKILLER** | Oscillator assault | Break the turret ring and breach the thermal oscillator while the weapon drains the sun |
 
 **Play it:** https://kelleyblackmore.github.io/outer-rim/
 

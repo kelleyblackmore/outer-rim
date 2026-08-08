@@ -455,7 +455,199 @@ function buildEmber(root, colliders, rng) {
   };
 }
 
-const BUILDERS = { belt: buildBelt, dunes: buildDunes, glacier: buildGlacier, clouds: buildClouds, ember: buildEmber };
+// ---------------- DEATH STAR (Battle of Yavin) ----------------
+// A meridian trench runs the full length of the map along Z. The surface is a
+// quantized-panel plate with a gentle spherical falloff so the horizon curves
+// away like a moon-sized station. The collision heightFn is a hard step at the
+// trench lip — crossing the wall at depth IS hitting the wall.
+function buildDeathstar(root, colliders, rng) {
+  const n = makeNoise(4242);
+  const TW = 26, DEPTH = 44;
+  const curv = (x, z) => -(x * x + z * z) / 70000;
+  const panel = (x, z) => Math.floor(n.fbm(x * 0.004 + 9, z * 0.004 + 3, 3) * 3.2) * 3 + n.noise2(x * 0.05, z * 0.05) * 1.2;
+  const heightFn = (x, z) => (Math.abs(x) < TW ? -DEPTH : panel(x, z)) + curv(x, z);
+
+  // surface plates (either side of the trench), displaced + vertex-colored
+  const mkPlate = (side) => {
+    const W = TERRAIN_SIZE / 2 - TW;
+    const geo = new THREE.PlaneGeometry(W, TERRAIN_SIZE, 76, 150);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(side * (TW + W / 2), 0, 0);
+    const p = geo.attributes.position;
+    const colors = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i);
+      p.setY(i, panel(x, z) + curv(x, z));
+      const g = 0.30 + (n.noise2(x * 0.01 + 4, z * 0.01) - 0.5) * 0.1 + panel(x, z) * 0.006;
+      colors[i * 3] = g; colors[i * 3 + 1] = g * 1.03; colors[i * 3 + 2] = g * 1.12;
+    }
+    geo.computeVertexNormals();
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.85, metalness: 0.25 }));
+    root.add(mesh);
+  };
+  mkPlate(-1); mkPlate(1);
+
+  // trench floor
+  {
+    const geo = new THREE.PlaneGeometry(TW * 2, TERRAIN_SIZE, 4, 150);
+    geo.rotateX(-Math.PI / 2);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setY(i, -DEPTH + curv(p.getX(i), p.getZ(i)));
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x2e343e, flatShading: true, roughness: 0.9, metalness: 0.2 }));
+    root.add(mesh);
+  }
+
+  // trench walls with lit-window strips
+  const wallTex = (() => {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#232830'; g.fillRect(0, 0, 512, 64);
+    g.fillStyle = '#31373f';
+    for (let i = 0; i < 40; i++) g.fillRect(Math.random() * 512, Math.random() * 64, 3 + Math.random() * 24, 2 + Math.random() * 10);
+    g.fillStyle = '#ffdf9a';
+    for (let i = 0; i < 90; i++) g.fillRect(Math.random() * 512, Math.random() * 60, 1 + Math.random() * 3, 1 + Math.random() * 2);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(8, 1);
+    return tex;
+  })();
+  for (const side of [-1, 1]) {
+    const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, DEPTH + 6, 100, 1);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      // plane is in XY; X here becomes world Z after rotation
+      p.setY(i, p.getY(i) + curv(TW, p.getX(i)));
+    }
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: wallTex, emissiveMap: wallTex,
+      emissive: 0xffffff, emissiveIntensity: 0.5, roughness: 0.85, metalness: 0.2, side: THREE.DoubleSide }));
+    mesh.rotation.y = side * Math.PI / 2;
+    mesh.position.set(side * TW, -DEPTH / 2 + 1, 0);
+    root.add(mesh);
+  }
+
+  // surface greebles — a plate city of instanced blocks; the tall ones collide
+  const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+  const blockMat = new THREE.MeshStandardMaterial({ color: 0x3c434e, flatShading: true, roughness: 0.8, metalness: 0.3 });
+  scatter(root, blockGeo, blockMat, 900, () => {
+    const side = rand(rng) < 0.5 ? -1 : 1;
+    const x = side * (TW + 14 + rand(rng) * 2500);
+    const z = (rand(rng) - 0.5) * 5800;
+    const sx = 6 + rand(rng) * 34, sy = 2 + rand(rng) * rand(rng) * 26, sz = 6 + rand(rng) * 34;
+    return { x, y: panel(x, z) + curv(x, z) + sy / 2, z, sx, sy, sz, ry: rand(rng) < 0.85 ? 0 : Math.PI / 4 };
+  }, colliders, spec => spec.sy > 16 && Math.abs(spec.x) < 700 ? { r: Math.max(spec.sx, spec.sy) * 0.7, y: spec.y } : null);
+
+  // deep space + Yavin gas giant
+  root.add(makeStars(2200, 0.9, 0.55));
+  const c = document.createElement('canvas'); c.width = 8; c.height = 128;
+  const g2 = c.getContext('2d');
+  const bands = ['#c86a3a', '#e08a4a', '#a85830', '#d4784a', '#f0a060', '#98502c'];
+  for (let i = 0; i < 128; i++) { g2.fillStyle = bands[Math.floor(i / 128 * 26) % bands.length]; g2.fillRect(0, i, 8, 1); }
+  const ptex = new THREE.CanvasTexture(c);
+  ptex.colorSpace = THREE.SRGBColorSpace;
+  const yavin = new THREE.Mesh(new THREE.SphereGeometry(760, 32, 24),
+    new THREE.MeshStandardMaterial({ map: ptex, roughness: 1, fog: false }));
+  yavin.position.set(-2100, 900, -2700);
+  root.add(yavin);
+
+  return {
+    getHeight: heightFn,
+    trench: { halfW: TW, depth: DEPTH },
+    atmosphere: { bg: 0x02030a, fog: 0x0a0d16, fogDensity: 0.00045, hemiSky: 0x8aa4c8, hemiGround: 0x11141c, hemiI: 0.6,
+      keyColor: 0xf0f4ff, keyI: 1.15, keyPos: [500, 800, 400], fillColor: 0x334a7a, fillI: 0.3, exposure: 1.12 },
+    spawn: { x: 0, y: 300, z: 1500 },
+    update: null,
+  };
+}
+
+// ---------------- STARKILLER BASE (oscillator assault) ----------------
+function buildStarkiller(root, colliders, rng, engine) {
+  const n = makeNoise(7317);
+  const OSC = { x: 0, z: -900 };
+  const snow = (x, z) => {
+    const field = n.fbm(x * 0.0012 + 5, z * 0.0012 + 11, 4) * 34;
+    const ridgeMask = n.fbm(x * 0.00045 + 3, z * 0.00045 + 8, 3);
+    const crest = ridgeMask > 0.6 ? n.ridge(x * 0.0015, z * 0.0015, 3) * 70 * ((ridgeMask - 0.6) / 0.4) : 0;
+    return field + crest;
+  };
+  const heightFn = (x, z) => {
+    const d = Math.hypot(x - OSC.x, z - OSC.z);
+    const base = snow(x, z);
+    // flat apron sunk around the oscillator
+    const s = THREE.MathUtils.smoothstep(d, 200, 460);
+    return 6 * (1 - s) + base * s;
+  };
+  const colorFn = (col, h, ny, x, z) => {
+    if (h > 55) col.setRGB(0.97, 0.98, 1.0);
+    else col.setRGB(0.88, 0.92, 0.97);
+    if (ny < 0.82) col.multiplyScalar(0.84).lerp(new THREE.Color(0.5, 0.62, 0.78), 0.22);
+    col.multiplyScalar(0.94 + n.noise2(x * 0.03, z * 0.03) * 0.1);
+  };
+  root.add(makeTerrain(heightFn, colorFn));
+
+  // pine forest (clear of the base apron)
+  const treeGeo = new THREE.ConeGeometry(5, 18, 6);
+  const treeMat = new THREE.MeshStandardMaterial({ color: 0x1d3b2a, flatShading: true, roughness: 1 });
+  scatter(root, treeGeo, treeMat, 430, () => {
+    let x = 0, z = 0, tries = 0;
+    do {
+      const a = rand(rng) * Math.PI * 2, r = 150 + rand(rng) * 1750;
+      x = Math.cos(a) * r; z = Math.sin(a) * r; tries++;
+    } while (Math.hypot(x - OSC.x, z - OSC.z) < 520 && tries < 8);
+    const sc = 0.7 + rand(rng) * 1.3;
+    return { x, y: heightFn(x, z) + 9 * sc - 1, z, ry: rand(rng) * 3, scale: sc };
+  }, null, null);
+
+  // the fortress hull blocks flight — kept inside the vent radius (128) so
+  // attack runs on the vent aren't clipped by the crash sphere
+  colliders.push({ x: OSC.x, y: 40, z: OSC.z, r: 100 });
+
+  // sky + drainable sun
+  const dome = gradientSky(0x2c4f8c, 0x7ea6d8, 0xdfeefc);
+  root.add(dome);
+  const sun = makeSun('#ffffff', 'rgba(215,230,255,0.75)', 640, new THREE.Vector3(2400, 800, -1900));
+  root.add(sun);
+  root.add(makeStars(400, 0.4, 0.55));
+
+  // charge 0..1: the weapon drains the sun — sky dusks, light dies
+  const skyA = [new THREE.Color(0x2c4f8c), new THREE.Color(0x7ea6d8), new THREE.Color(0xdfeefc)];
+  const skyB = [new THREE.Color(0x1a1030), new THREE.Color(0x54344e), new THREE.Color(0x8a4a3e)];
+  const fogA = new THREE.Color(0xd8e8f8), fogB = new THREE.Color(0x584050);
+  const scratch = new THREE.Color();
+  let lastApplied = -1;
+  const setCharge = (t) => {
+    t = THREE.MathUtils.clamp(t, 0, 1);
+    sun.material.opacity = 1 - t * 0.72;
+    sun.scale.setScalar(640 * (1 - t * 0.35));
+    sun.material.color.setRGB(1, 1 - t * 0.45, 1 - t * 0.68);
+    const u = dome.material.uniforms;
+    u.cTop.value.copy(skyA[0]).lerp(skyB[0], t);
+    u.cMid.value.copy(skyA[1]).lerp(skyB[1], t);
+    u.cBot.value.copy(skyA[2]).lerp(skyB[2], t);
+    if (Math.abs(t - lastApplied) > 0.02) {
+      lastApplied = t;
+      scratch.copy(fogA).lerp(fogB, t);
+      engine.setAtmosphere({ bg: scratch, fog: scratch, fogDensity: 0.0003 + t * 0.0002,
+        hemiSky: 0xdceeff, hemiGround: 0x8fb2cc, hemiI: 0.85 - t * 0.42,
+        keyColor: 0xffffff, keyI: 1.3 - t * 0.8, keyPos: [900, 400, -700],
+        fillColor: 0x5c88ff, fillI: 0.3, exposure: 1.1 - t * 0.12 });
+    }
+  };
+
+  return {
+    getHeight: heightFn,
+    oscSite: { x: OSC.x, z: OSC.z },
+    setCharge,
+    atmosphere: { bg: 0xd8e8f8, fog: 0xd8e8f8, fogDensity: 0.0003, hemiSky: 0xdceeff, hemiGround: 0x8fb2cc, hemiI: 0.85,
+      keyColor: 0xffffff, keyI: 1.3, keyPos: [900, 400, -700], fillColor: 0x5c88ff, fillI: 0.3, exposure: 1.1 },
+    spawn: { x: 0, y: heightFn(0, 900) + 110, z: 900 },
+    update: null,
+  };
+}
+
+const BUILDERS = { belt: buildBelt, dunes: buildDunes, glacier: buildGlacier, clouds: buildClouds, ember: buildEmber,
+  deathstar: buildDeathstar, starkiller: buildStarkiller };
 
 // ---------------- public API ----------------
 
@@ -463,7 +655,7 @@ export function buildWorld(engine, id) {
   const root = new THREE.Group();
   const colliders = [];
   const rng = { s: 0xC0FFEE ^ (id.length * 2654435761) };
-  const spec = BUILDERS[id](root, colliders, rng);
+  const spec = BUILDERS[id](root, colliders, rng, engine);
   engine.scene.add(root);
   engine.setAtmosphere(spec.atmosphere);
 
@@ -473,6 +665,9 @@ export function buildWorld(engine, id) {
     getHeight: spec.getHeight,
     deckIsStorm: !!spec.deckIsStorm,
     lavaY: spec.lavaY,
+    trench: spec.trench,
+    oscSite: spec.oscSite,
+    setCharge: spec.setCharge,
     spawn: spec.spawn,
     boundsR: 2100,
     update(dt) { time += dt; if (spec.update) spec.update(dt, time); },
