@@ -137,12 +137,49 @@
         </div>
         <div class="row-under">
           <button id="how-btn" class="btn ghost">HOW TO FLY</button>
+          <button id="set-btn" class="btn ghost">SETTINGS</button>
           <div class="diff-row" role="group" aria-label="Difficulty">
             <button class="diff" data-diff="cadet">CADET</button>
             <button class="diff sel" data-diff="pilot">PILOT</button>
             <button class="diff" data-diff="ace">ACE</button>
           </div>
         </div>
+      </div>
+
+      <div id="settings" class="screen hidden">
+        <h2 class="panel-title">SETTINGS</h2>
+        <div class="setgrid">
+          <div class="set-row">
+            <span class="set-label">INVERT PITCH<i>flight-stick style — pull down / back to climb</i></span>
+            <div class="seg" data-set="invertY" role="group" aria-label="Invert pitch">
+              <button class="diff" data-val="off">OFF</button>
+              <button class="diff" data-val="on">ON</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">STEERING SENSITIVITY<i>pitch &amp; turn rate</i></span>
+            <div class="seg" data-set="sensitivity" role="group" aria-label="Steering sensitivity">
+              <button class="diff" data-val="low">LOW</button>
+              <button class="diff" data-val="normal">NORMAL</button>
+              <button class="diff" data-val="high">HIGH</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">AUTO-LEVEL ASSIST<i>banks into turns and levels the wings for you</i></span>
+            <div class="seg" data-set="autoLevel" role="group" aria-label="Auto-level assist">
+              <button class="diff" data-val="on">ON</button>
+              <button class="diff" data-val="off">OFF</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">CAMERA BANKING<i>how much the camera rolls with the ship</i></span>
+            <div class="seg" data-set="camBank" role="group" aria-label="Camera banking">
+              <button class="diff" data-val="full">FULL</button>
+              <button class="diff" data-val="reduced">REDUCED</button>
+            </div>
+          </div>
+        </div>
+        <button id="set-back" class="btn primary">DONE</button>
       </div>
 
       <div id="howto" class="screen hidden">
@@ -165,6 +202,7 @@
       <div id="pause" class="screen hidden">
         <h2 class="panel-title">PAUSED</h2>
         <button id="resume-btn" class="btn primary">RESUME</button>
+        <button id="pause-set-btn" class="btn ghost">SETTINGS</button>
         <button id="abort-btn" class="btn ghost">ABORT TO MENU</button>
       </div>
 

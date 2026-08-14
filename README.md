@@ -31,6 +31,10 @@ same engine philosophy, but free flight instead of rails.
 - **Flight stick / HOTAS** — stick steers (pull back to climb), twist rolls, throttle
   slider is absolute, trigger fires, thumb button launches torpedoes
 
+**Settings** (title screen or pause menu, saved locally): invert pitch
+(flight-stick style on mouse/keys/gamepad), steering sensitivity, auto-level
+assist on/off, and camera banking.
+
 ## Tech
 
 - **Three.js r160, vendored** under `vendor/three/` — ES modules + import map,

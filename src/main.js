@@ -71,7 +71,7 @@ audio.setMuted(LS.muted);
 $('sound-btn').textContent = LS.muted ? '🔇' : '♪';
 $('sound-btn').classList.toggle('off', LS.muted);
 $('sound-btn').setAttribute('aria-pressed', String(LS.muted));
-document.querySelectorAll('.diff').forEach(b => b.classList.toggle('sel', b.dataset.diff === difficulty));
+document.querySelectorAll('.diff-row .diff').forEach(b => b.classList.toggle('sel', b.dataset.diff === difficulty));
 
 function refreshBests() {
   document.querySelectorAll('[data-best]').forEach(el => {
@@ -81,10 +81,37 @@ function refreshBests() {
 }
 refreshBests();
 
+// ---------------- player settings ----------------
+const SETTING_DEFAULTS = { invertY: 'off', sensitivity: 'normal', autoLevel: 'on', camBank: 'full' };
+const settings = {};
+for (const k of Object.keys(SETTING_DEFAULTS)) {
+  const v = localStorage.getItem(LS_PREFIX + 'set.' + k);
+  settings[k] = v !== null ? v : SETTING_DEFAULTS[k];
+}
+function applySettings() {
+  input.setOptions({ invertY: settings.invertY === 'on' });
+  flight.setOptions({
+    sensitivity: settings.sensitivity === 'low' ? 0.75 : settings.sensitivity === 'high' ? 1.35 : 1,
+    autoLevel: settings.autoLevel !== 'off',
+    camBank: settings.camBank === 'reduced' ? 0.15 : 0.5,
+  });
+  document.querySelectorAll('.seg').forEach(seg => {
+    const key = seg.dataset.set;
+    seg.querySelectorAll('[data-val]').forEach(b => b.classList.toggle('sel', b.dataset.val === settings[key]));
+  });
+}
+document.querySelectorAll('.seg [data-val]').forEach(b => b.addEventListener('click', () => {
+  const key = b.closest('.seg').dataset.set;
+  settings[key] = b.dataset.val;
+  localStorage.setItem(LS_PREFIX + 'set.' + key, b.dataset.val);
+  applySettings();
+}));
+applySettings();
+
 // ---------------- state machine ----------------
 let state = 'loading';
 let currentMission = null;
-const screens = ['loading', 'title', 'howto', 'pause', 'result'];
+const screens = ['loading', 'title', 'howto', 'pause', 'result', 'settings'];
 function showScreen(name) {
   $('overlay').classList.toggle('hidden', name === null);
   screens.forEach(s => $(s).classList.toggle('hidden', s !== name));
@@ -164,12 +191,22 @@ $('next-btn').addEventListener('click', e => startMission(e.currentTarget.datase
 $('menu-btn').addEventListener('click', toTitle);
 $('how-btn').addEventListener('click', () => { state = 'howto'; showScreen('howto'); });
 $('how-back').addEventListener('click', toTitle);
+// settings can be opened from the title or mid-mission from pause;
+// DONE returns wherever it came from without touching the mission
+let settingsReturn = 'title';
+function openSettings(from) { settingsReturn = from; state = 'settings'; showScreen('settings'); }
+$('set-btn').addEventListener('click', () => openSettings('title'));
+$('pause-set-btn').addEventListener('click', () => openSettings('pause'));
+$('set-back').addEventListener('click', () => {
+  if (settingsReturn === 'pause') { state = 'paused'; showScreen('pause'); }
+  else { state = 'title'; showScreen('title'); }
+});
 $('resume-btn').addEventListener('click', () => togglePause(false));
 $('abort-btn').addEventListener('click', toTitle);
 $('pause-btn').addEventListener('click', () => togglePause());
-document.querySelectorAll('.diff').forEach(b => b.addEventListener('click', () => {
+document.querySelectorAll('.diff-row .diff').forEach(b => b.addEventListener('click', () => {
   difficulty = b.dataset.diff; localStorage.setItem(LS_PREFIX + 'diff', difficulty);
-  document.querySelectorAll('.diff').forEach(x => x.classList.toggle('sel', x === b));
+  document.querySelectorAll('.diff-row .diff').forEach(x => x.classList.toggle('sel', x === b));
 }));
 $('sound-btn').addEventListener('click', () => {
   const m = !audio.muted; audio.setMuted(m); localStorage.setItem(LS_PREFIX + 'muted', m ? '1' : '0');
@@ -275,7 +312,7 @@ function frame(now) {
           playTick(dt);
           input.resetEdges();
         }
-      } else if (state === 'paused') {
+      } else if (state === 'paused' || (state === 'settings' && settingsReturn === 'pause')) {
         // frozen; keep last frame
       } else {
         idle(dt);
@@ -338,6 +375,7 @@ if (/[?&]debug\b/.test(location.search)) {
       ship.quaternion.setFromRotationMatrix(m);
     },
     mock: m => input.setMock(m),
+    settings, applySettings,
     render: () => engine.render(),
     // manual sizing for hidden panes where window.innerWidth is 0
     resize: (w, h) => { engine.resize(w, h); hud.resize(w, h); },

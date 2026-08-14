@@ -15,6 +15,9 @@ export function createInput(canvas) {
   const src = { kbFire: false, mouseFire: false, kbBoost: false, torpEdge: false, padTorpPrev: false };
   const keys = {};
   let mouse = null;            // {nx,ny} in -1..1, or null until first move
+  let invertY = false;         // settings: flight-stick pitch on mouse/keys/pad/touch
+
+  function setOptions(o) { if (o.invertY !== undefined) invertY = !!o.invertY; }
 
   const DEAD = 0.07;
   const expo = v => {
@@ -123,7 +126,7 @@ export function createInput(canvas) {
     // conventions; anything else with 3+ axes is treated as a joystick:
     // X = turn, Y = pull-back-to-climb, twist = roll, slider = absolute throttle.
     let gx = 0, gy = 0, gr = 0, padAxis = false, padFire = false, padBoost = false, padTorp = false, gt = 0;
-    let throttleSet = null;
+    let throttleSet = null, isJoystick = false;
     const dzAxis = (v, dz) => Math.abs(v) > dz ? v : 0;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
@@ -139,6 +142,7 @@ export function createInput(canvas) {
         if (p.buttons[13] && p.buttons[13].pressed) gt -= 1;
       } else {
         // flight stick: Logitech Extreme 3D / T.16000M / HOTAS layouts
+        isJoystick = true;
         gx = dzAxis(p.axes[0], 0.12);
         gy = dzAxis(p.axes[1], 0.12);                             // pull back (+) = climb
         gr = p.axes.length > 2 ? dzAxis(p.axes[2], 0.22) : 0;     // twist rudder = roll
@@ -155,11 +159,14 @@ export function createInput(canvas) {
     state.throttleSet = throttleSet;
 
     // priority: keys > touch stick > pad > mouse
+    let joyOwnsPitch = false;
     if (kx || ky) { state.steerX = kx; state.steerY = ky; }
     else if (stickActive) { state.steerX = stickX; state.steerY = stickY; }
-    else if (padAxis) { state.steerX = gx; state.steerY = gy; }
+    else if (padAxis) { state.steerX = gx; state.steerY = gy; joyOwnsPitch = isJoystick; }
     else if (!isTouch && mouse) { state.steerX = expo(mouse.nx); state.steerY = expo(-mouse.ny); }
     else { state.steerX = 0; state.steerY = 0; }
+    // invert-pitch setting: HOTAS sticks are already pull-to-climb, skip them
+    if (invertY && !joyOwnsPitch) state.steerY = -state.steerY;
 
     state.roll = kr || gr || 0;
     state.throttleAxis = kt || gt || 0;
@@ -185,5 +192,5 @@ export function createInput(canvas) {
     if (m && m.boost !== undefined) src.kbBoost = !!m.boost;
     if (m && m.torp) src.torpEdge = true; }
 
-  return { state, update, resetEdges, clearAll, touchBtn, setMock };
+  return { state, update, resetEdges, clearAll, touchBtn, setMock, setOptions };
 }

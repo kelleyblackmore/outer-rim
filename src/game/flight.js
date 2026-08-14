@@ -19,6 +19,9 @@ export function createFlight(ship, input, audio) {
   let pitchRate = 0, yawRate = 0, rollRate = 0;
   let camRollUp = new THREE.Vector3(0, 1, 0);
   let fovKick = 0;
+  // settings (main.js pushes these): rate multiplier, assists, camera roll share
+  const opts = { sensitivity: 1, autoLevel: true, camBank: 0.5 };
+  function setOptions(o) { Object.assign(opts, o); }
 
   const F = new THREE.Vector3(), R = new THREE.Vector3(), U = new THREE.Vector3();
   const V = new THREE.Vector3(), V2 = new THREE.Vector3();
@@ -71,13 +74,14 @@ export function createFlight(ship, input, audio) {
 
     // ---- rotation rates (smoothed toward demand) ----
     const k = 1 - Math.exp(-9 * dt);
-    pitchRate += (s.steerY * PITCH_MAX - pitchRate) * k;
-    yawRate += (-s.steerX * TURN_MAX - yawRate) * k;
+    pitchRate += (s.steerY * PITCH_MAX * opts.sensitivity - pitchRate) * k;
+    yawRate += (-s.steerX * TURN_MAX * opts.sensitivity - yawRate) * k;
 
     vectors();
     // auto-bank into turns / auto-level, unless the pilot is rolling manually
+    // (or has switched the assist off)
     let rollDemand = -s.roll * ROLL_MAX;
-    if (!s.roll && Math.abs(F.y) < 0.93) {
+    if (!s.roll && opts.autoLevel && Math.abs(F.y) < 0.93) {
       // bank angle: how far the right wing is from level, signed
       const bank = Math.atan2(R.y, Math.hypot(R.x, R.z));
       const bankTarget = -s.steerX * 0.85;
@@ -183,7 +187,7 @@ export function createFlight(ship, input, audio) {
     V.set(0, 3.1, 11.0).applyQuaternion(ship.quaternion).add(ship.position);
     camera.position.lerp(V, kp);
     // blended up vector: mostly world-up, partly ship-up → readable banking
-    const mix = reduceMotion ? 0.12 : 0.5;
+    const mix = reduceMotion ? 0.12 : opts.camBank;
     V2.copy(WORLD_UP).lerp(U, mix);
     if (V2.lengthSq() < 0.05) V2.copy(U);    // inverted flight: follow the ship
     camRollUp.lerp(V2.normalize(), kp);
@@ -202,5 +206,5 @@ export function createFlight(ship, input, audio) {
   function right(out) { return out.set(1, 0, 0).applyQuaternion(ship.quaternion); }
   function velocityInto(out) { return forward(out).multiplyScalar(state.speed); }
 
-  return { state, ship, setWorld, reset, update, updateCamera, forward, right, velocityInto, floorAt };
+  return { state, ship, setWorld, reset, update, updateCamera, forward, right, velocityInto, floorAt, setOptions };
 }
