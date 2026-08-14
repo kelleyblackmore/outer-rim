@@ -208,6 +208,7 @@ function idle(dt) {
   );
   ship.rotation.set(0, 0, -Math.cos(idleT * 0.3) * 0.22);
   for (const n of ship.userData.engineNodes) n.material.emissiveIntensity = 2.6 + Math.sin(idleT * 30) * 0.3;
+  engine.followShadow(ship.position);
   const cam = engine.camera;
   cam.up.set(0, 1, 0);
   cam.position.set(
@@ -250,6 +251,7 @@ function playTick(dt) {
   systems.update(dt);            // includes flight.update
   runner.update(dt);
   world.update(dt);
+  engine.followShadow(ship.position);
   flight.updateCamera(engine.camera, dt, reduceMotion);
   const snap = systems.hudSnapshot(runner.objectiveInfo());
   hud.updateFrame(systems.run, flight.state, snap, dt);

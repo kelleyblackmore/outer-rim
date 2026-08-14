@@ -56,7 +56,12 @@ export function createFlight(ship, input, audio) {
     prevPos.copy(ship.position);
 
     // ---- throttle & speed ----
-    state.throttle = THREE.MathUtils.clamp(state.throttle + s.throttleAxis * 0.55 * dt, 0, 1);
+    if (s.throttleSet != null) {
+      // HOTAS slider: absolute, lightly smoothed
+      state.throttle += (THREE.MathUtils.clamp(s.throttleSet, 0, 1) - state.throttle) * Math.min(1, 12 * dt);
+    } else {
+      state.throttle = THREE.MathUtils.clamp(state.throttle + s.throttleAxis * 0.55 * dt, 0, 1);
+    }
     state.boosting = s.boost && state.energy > 0;
     if (state.boosting) state.energy = Math.max(0, state.energy - 30 * dt);
     else state.energy = Math.min(100, state.energy + 14 * dt);
@@ -157,9 +162,18 @@ export function createFlight(ship, input, audio) {
       }
     }
 
-    // engine glow
+    // engine glow + exhaust trails
     const glow = 2.4 + state.throttle * 1.4 + (state.boosting ? 1.8 : 0) + Math.sin(performance.now() * 0.04) * 0.3;
     for (const n of ship.userData.engineNodes) n.material.emissiveIntensity = glow;
+    if (ship.userData.trails) {
+      const L = 1.0 + state.throttle * 2.4 + (state.boosting ? 3.6 : 0);
+      const flick = 0.9 + Math.sin(performance.now() * 0.045) * 0.1;
+      const op = 0.28 + state.throttle * 0.24 + (state.boosting ? 0.28 : 0);
+      for (const t of ship.userData.trails) {
+        t.scale.z = L * flick;
+        t.material.opacity = op;
+      }
+    }
   }
 
   // chase camera: sits behind/above in ship space, partially shares the ship's roll

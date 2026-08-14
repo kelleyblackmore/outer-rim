@@ -6,6 +6,7 @@ export function createInput(canvas) {
     steerX: 0, steerY: 0,      // -1..1 rate demand (steerY + = climb)
     roll: 0,                   // -1..1 manual roll (+ = roll right)
     throttleAxis: 0,           // -1 | 0 | +1 held
+    throttleSet: null,         // 0..1 absolute (HOTAS throttle slider), or null
     fire: false, boost: false,
     torpedoEdge: false,
     pausePressed: false,
@@ -118,23 +119,40 @@ export function createInput(canvas) {
     if (keys['w'] || keys['__thrUp']) kt += 1;
     if (keys['s'] || keys['__thrDn']) kt -= 1;
 
-    // gamepad
+    // gamepad OR flight stick (HOTAS). Standard-mapped pads use thumbstick
+    // conventions; anything else with 3+ axes is treated as a joystick:
+    // X = turn, Y = pull-back-to-climb, twist = roll, slider = absolute throttle.
     let gx = 0, gy = 0, gr = 0, padAxis = false, padFire = false, padBoost = false, padTorp = false, gt = 0;
+    let throttleSet = null;
+    const dzAxis = (v, dz) => Math.abs(v) > dz ? v : 0;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
-      if (!p) continue;
-      const dz = 0.18;
-      gx = Math.abs(p.axes[0]) > dz ? p.axes[0] : 0;
-      gy = Math.abs(p.axes[1]) > dz ? -p.axes[1] : 0;             // stick up = climb
-      gr = p.axes.length > 2 && Math.abs(p.axes[2]) > dz ? p.axes[2] : 0;
+      if (!p || !p.connected) continue;
+      if (p.mapping === 'standard') {
+        gx = dzAxis(p.axes[0], 0.18);
+        gy = -dzAxis(p.axes[1], 0.18);                            // stick up = climb
+        gr = p.axes.length > 2 ? dzAxis(p.axes[2], 0.18) : 0;
+        padFire = !!((p.buttons[0] && p.buttons[0].pressed) || (p.buttons[7] && p.buttons[7].pressed));
+        padBoost = !!((p.buttons[6] && p.buttons[6].pressed) || (p.buttons[1] && p.buttons[1].pressed));
+        padTorp = !!((p.buttons[2] && p.buttons[2].pressed) || (p.buttons[3] && p.buttons[3].pressed));
+        if (p.buttons[12] && p.buttons[12].pressed) gt += 1;      // dpad = throttle trim
+        if (p.buttons[13] && p.buttons[13].pressed) gt -= 1;
+      } else {
+        // flight stick: Logitech Extreme 3D / T.16000M / HOTAS layouts
+        gx = dzAxis(p.axes[0], 0.12);
+        gy = dzAxis(p.axes[1], 0.12);                             // pull back (+) = climb
+        gr = p.axes.length > 2 ? dzAxis(p.axes[2], 0.22) : 0;     // twist rudder = roll
+        if (p.axes.length > 3 && Number.isFinite(p.axes[3])) {
+          throttleSet = (1 - p.axes[3]) / 2;                      // slider forward = full
+        }
+        padFire = !!(p.buttons[0] && p.buttons[0].pressed);       // trigger
+        padTorp = !!(p.buttons[1] && p.buttons[1].pressed);       // thumb button
+        padBoost = !!((p.buttons[2] && p.buttons[2].pressed) || (p.buttons[3] && p.buttons[3].pressed));
+      }
       padAxis = !!(gx || gy);
-      padFire = !!((p.buttons[0] && p.buttons[0].pressed) || (p.buttons[7] && p.buttons[7].pressed));
-      padBoost = !!((p.buttons[6] && p.buttons[6].pressed) || (p.buttons[1] && p.buttons[1].pressed));
-      padTorp = !!((p.buttons[2] && p.buttons[2].pressed) || (p.buttons[3] && p.buttons[3].pressed));
-      if (p.buttons[12] && p.buttons[12].pressed) gt += 1;        // dpad up/down = throttle
-      if (p.buttons[13] && p.buttons[13].pressed) gt -= 1;
       break;
     }
+    state.throttleSet = throttleSet;
 
     // priority: keys > touch stick > pad > mouse
     if (kx || ky) { state.steerX = kx; state.steerY = ky; }

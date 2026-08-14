@@ -51,12 +51,30 @@ function radialTexture(inner, outer, stops) {
 }
 
 function makeSun(color, haze, scale, pos) {
+  const g = new THREE.Group();
   const tex = radialTexture(4, 64, [[0, '#ffffff'], [0.18, color], [0.5, haze], [1, 'rgba(0,0,0,0)']]);
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
   const s = new THREE.Sprite(mat);
   s.scale.setScalar(scale);
-  s.position.copy(pos);
-  return s;
+  g.add(s);
+  // anamorphic streak across the disc
+  const sc = document.createElement('canvas'); sc.width = 256; sc.height = 16;
+  const sg = sc.getContext('2d');
+  const grad = sg.createLinearGradient(0, 0, 256, 0);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  sg.fillStyle = grad; sg.fillRect(0, 0, 256, 16);
+  const stex = new THREE.CanvasTexture(sc);
+  stex.colorSpace = THREE.SRGBColorSpace;
+  const streak = new THREE.Sprite(new THREE.SpriteMaterial({ map: stex, color, transparent: true,
+    opacity: 0.4, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
+  streak.scale.set(scale * 2.4, scale * 0.1, 1);
+  g.add(streak);
+  g.position.copy(pos);
+  // expose the disc for worlds that dim their sun
+  g.userData.disc = s; g.userData.streak = streak;
+  return g;
 }
 
 function makeStars(count, brightness, tint) {
@@ -103,6 +121,7 @@ function makeTerrain(heightFn, colorFn) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 });
   const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -124,6 +143,8 @@ function scatter(root, geo, mat, count, placeFn, colliders, colliderR) {
     }
   }
   inst.instanceMatrix.needsUpdate = true;
+  inst.castShadow = true;
+  inst.receiveShadow = true;
   root.add(inst);
   return inst;
 }
@@ -345,6 +366,7 @@ function buildClouds(root, colliders, rng) {
     const x = Math.cos(a) * r, z = Math.sin(a) * r, y = 120 + rand(rng) * 260;
     const p = new THREE.Mesh(platGeo, platMat);
     p.position.set(x, y, z);
+    p.castShadow = p.receiveShadow = true;
     root.add(p); plats.push(p);
     const spikes = new THREE.Mesh(new THREE.ConeGeometry(9, 40, 8), platMat);
     spikes.position.set(x, y - 24, z); spikes.rotation.x = Math.PI;
@@ -484,6 +506,7 @@ function buildDeathstar(root, colliders, rng) {
     geo.computeVertexNormals();
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.85, metalness: 0.25 }));
+    mesh.receiveShadow = true;
     root.add(mesh);
   };
   mkPlate(-1); mkPlate(1);
@@ -496,6 +519,7 @@ function buildDeathstar(root, colliders, rng) {
     for (let i = 0; i < p.count; i++) p.setY(i, -DEPTH + curv(p.getX(i), p.getZ(i)));
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x2e343e, flatShading: true, roughness: 0.9, metalness: 0.2 }));
+    mesh.receiveShadow = true;
     root.add(mesh);
   }
 
@@ -524,6 +548,7 @@ function buildDeathstar(root, colliders, rng) {
       emissive: 0xffffff, emissiveIntensity: 0.5, roughness: 0.85, metalness: 0.2, side: THREE.DoubleSide }));
     mesh.rotation.y = side * Math.PI / 2;
     mesh.position.set(side * TW, -DEPTH / 2 + 1, 0);
+    mesh.receiveShadow = true;
     root.add(mesh);
   }
 
@@ -618,9 +643,11 @@ function buildStarkiller(root, colliders, rng, engine) {
   let lastApplied = -1;
   const setCharge = (t) => {
     t = THREE.MathUtils.clamp(t, 0, 1);
-    sun.material.opacity = 1 - t * 0.72;
-    sun.scale.setScalar(640 * (1 - t * 0.35));
-    sun.material.color.setRGB(1, 1 - t * 0.45, 1 - t * 0.68);
+    const disc = sun.userData.disc, streak = sun.userData.streak;
+    disc.material.opacity = 1 - t * 0.72;
+    streak.material.opacity = 0.4 * (1 - t);
+    sun.scale.setScalar(1 - t * 0.35);
+    disc.material.color.setRGB(1, 1 - t * 0.45, 1 - t * 0.68);
     const u = dome.material.uniforms;
     u.cTop.value.copy(skyA[0]).lerp(skyB[0], t);
     u.cMid.value.copy(skyA[1]).lerp(skyB[1], t);

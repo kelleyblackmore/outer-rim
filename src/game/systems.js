@@ -21,9 +21,28 @@ export function createSystems(ctx) {
   let onKill = null;           // mission hook: (kind) => {}
 
   // ---- pools ----
+  const glowTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  })();
+  const glowMat = color => new THREE.SpriteMaterial({ map: glowTex, color, transparent: true,
+    opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+  const GLOW_MATS = { 0xff2b2b: glowMat(0xff5a4a), 0x7dff4a: glowMat(0x8aff5a), 0xffd34d: glowMat(0xffe08a) };
   const mkBolt = (color, len = 3.4, w = 0.18) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, w, len),
       new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: 4.5, roughness: 0.4 }));
+    // additive halo makes bolts read like movie blaster fire
+    const halo = new THREE.Sprite(GLOW_MATS[color] || glowMat(color));
+    halo.scale.setScalar(len * 0.9 + w * 8);
+    m.add(halo);
     m.visible = false; scene.add(m); return m;
   };
   const pLasers = Array.from({ length: 64 }, () => ({ mesh: mkBolt(0xff2b2b), active: false, vel: new THREE.Vector3(), prev: new THREE.Vector3(), ttl: 0 }));
@@ -72,6 +91,15 @@ export function createSystems(ctx) {
     m.visible = false; scene.add(m);
     return { mesh: m, active: false, vel: new THREE.Vector3(), life: 0, max: 1, spin: new THREE.Vector3() };
   });
+  // fireball flashes + one shared light so blasts kiss the terrain
+  const flashes = Array.from({ length: 10 }, () => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffc060,
+      transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending }));
+    s.visible = false; scene.add(s);
+    return { spr: s, active: false, life: 0, max: 0.35, size: 20 };
+  });
+  const boomLight = new THREE.PointLight(0xffa040, 0, 700, 1.2);
+  scene.add(boomLight);
 
   // ---- run state ----
   const run = {
@@ -98,6 +126,8 @@ export function createSystems(ctx) {
     torps.forEach(t => { t.active = false; t.mesh.visible = false; t.target = null; });
     clearHostiles();
     particles.forEach(p => { p.active = false; p.mesh.visible = false; });
+    flashes.forEach(f => { f.active = false; f.spr.visible = false; });
+    boomLight.intensity = 0;
   }
 
   function clearHostiles() {
@@ -519,6 +549,17 @@ export function createSystems(ctx) {
 
   // ---------------- particles ----------------
   function explode(pos, big) {
+    const f = flashes.find(x => !x.active);
+    if (f) {
+      f.spr.position.copy(pos);
+      f.size = big ? 78 : 34;
+      f.spr.scale.setScalar(f.size * 0.4);
+      f.spr.material.opacity = 1;
+      f.life = 0; f.max = big ? 0.45 : 0.3;
+      f.active = true; f.spr.visible = true;
+    }
+    boomLight.position.copy(pos);
+    boomLight.intensity = big ? 900 : 380;
     const count = big ? 30 : 16;
     let made = 0;
     for (const p of particles) {
@@ -557,6 +598,16 @@ export function createSystems(ctx) {
       p.mesh.scale.setScalar(Math.max(0.01, k) * (p.base || 1));
       if (p.life >= p.max) { p.active = false; p.mesh.visible = false; }
     }
+    for (const f of flashes) {
+      if (!f.active) continue;
+      f.life += dt;
+      const t = f.life / f.max;
+      f.spr.scale.setScalar(f.size * (0.4 + t * 2.0));
+      f.spr.material.opacity = Math.max(0, Math.pow(1 - t, 1.6));
+      if (f.life >= f.max) { f.active = false; f.spr.visible = false; }
+    }
+    boomLight.intensity *= Math.exp(-8 * dt);
+    if (boomLight.intensity < 1) boomLight.intensity = 0;
   }
 
   // ---------------- damage ----------------

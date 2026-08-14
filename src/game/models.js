@@ -3,6 +3,17 @@ import * as THREE from 'three';
 
 const metal = (c, m = 0.6, r = 0.5) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r });
 const emissive = (c, i = 2.2) => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: c, emissiveIntensity: i, roughness: 0.4 });
+// every model throws shadows; glow-only meshes are skipped by the emissive test
+const cast = g => {
+  g.traverse(o => {
+    if (!o.isMesh) return;
+    const m = o.material;
+    const glowOnly = m && ((m.emissive && m.color && m.color.getHex() === 0x000000) || m.transparent);
+    o.castShadow = !glowOnly;
+    o.receiveShadow = !glowOnly;
+  });
+  return g;
+};
 
 // shared materials
 const M = {
@@ -96,10 +107,25 @@ export function buildXWing() {
     g.add(wing);
   }
 
+  // engine exhaust trails — additive cones stretched by throttle/boost
+  const trailGeo = new THREE.ConeGeometry(0.13, 1, 8, 1, true);
+  trailGeo.rotateX(Math.PI / 2);          // apex toward +Z (astern)
+  trailGeo.translate(0, 0, 0.5);          // base at origin, tail at +1
+  const trails = [];
+  for (const [x, y] of [[-0.34, 0.26], [0.34, 0.26], [-0.34, -0.26], [0.34, -0.26]]) {
+    const t = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({
+      color: 0x6fd8ff, transparent: true, opacity: 0.55, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    t.position.set(x, y, 2.06);
+    t.scale.z = 1.6;
+    g.add(t); trails.push(t);
+  }
+
   g.userData.engineNodes = engineNodes;
   g.userData.wingCannons = wingCannons;
+  g.userData.trails = trails;
   g.scale.setScalar(0.62);
-  return g;
+  return cast(g);
 }
 
 // ---------------- TIE FIGHTER ----------------
@@ -129,7 +155,7 @@ export function buildTIE() {
   }
   g.userData.eye = eye;
   g.scale.setScalar(1.15);
-  return g;
+  return cast(g);
 }
 
 // ---------------- PROBE DROID ----------------
@@ -158,7 +184,7 @@ export function buildProbe() {
   g.add(ant);
   g.userData.eye = eye;
   g.scale.setScalar(1.5);
-  return g;
+  return cast(g);
 }
 
 // ---------------- SHIELD GENERATOR (ground structure) ----------------
@@ -188,7 +214,7 @@ export function buildGenerator() {
   }
   g.userData.ring = ring;
   g.userData.tip = tip;
-  return g;
+  return cast(g);
 }
 
 // ---------------- TURRET ----------------
@@ -211,7 +237,7 @@ export function buildTurret() {
   light.position.set(0, 3.9, 0);
   g.add(light);
   g.userData.light = light;
-  return g;
+  return cast(g);
 }
 
 // ---------------- TURBOLASER TOWER (Death Star surface gun) ----------------
@@ -240,7 +266,7 @@ export function buildTower() {
   }
   g.userData.light = light;
   g.scale.setScalar(2.0);
-  return g;
+  return cast(g);
 }
 
 // ---------------- THERMAL EXHAUST PORT ----------------
@@ -264,7 +290,7 @@ export function buildPort() {
     g.add(b);
   }
   g.userData.ring = ring;
-  return g;
+  return cast(g);
 }
 
 // ---------------- THERMAL OSCILLATOR (Starkiller Base) ----------------
@@ -300,7 +326,7 @@ export function buildOscillator() {
   g.add(beacon);
   g.userData.vent = vent;
   g.userData.beacon = beacon;
-  return g;
+  return cast(g);
 }
 
 // ---------------- RING GATE (mission waypoint) ----------------

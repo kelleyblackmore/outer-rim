@@ -28,6 +28,8 @@ same engine philosophy, but free flight instead of rails.
 - **P / Esc** — pause
 - **Touch** — left virtual stick, auto-fire, BOOST / TORP / throttle buttons
 - **Gamepad** — left stick steers, dpad throttle, face buttons fire/boost/torpedo
+- **Flight stick / HOTAS** — stick steers (pull back to climb), twist rolls, throttle
+  slider is absolute, trigger fires, thumb button launches torpedoes
 
 ## Tech
 
