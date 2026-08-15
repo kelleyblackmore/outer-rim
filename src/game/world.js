@@ -154,6 +154,44 @@ const rand = (seedObj) => { // tiny LCG so worlds are stable run-to-run
   return seedObj.s / 4294967296;
 };
 
+const boxHitFor = boxes => p => {
+  for (const b of boxes) {
+    if (Math.abs(p.x - b.x) < b.hw && Math.abs(p.z - b.z) < b.hd && p.y < b.top) return true;
+  }
+  return false;
+};
+
+// open-top docking bay (Mos Eisley style): circular wall around a landing
+// floor, edge-lit, with AABB wall stubs for collision. Returns the pad.
+function dockingBay(root, boxes, cx, floorY, cz, o = {}) {
+  const r = o.r ?? 19, wall = o.wall ?? 10;
+  const wallMat = new THREE.MeshStandardMaterial({ color: o.color ?? 0x8a7a5c, roughness: 0.95,
+    metalness: 0.05, side: THREE.DoubleSide, flatShading: true });
+  const wallMesh = new THREE.Mesh(new THREE.CylinderGeometry(r + 2.4, r + 3.4, wall, 18, 1, true), wallMat);
+  wallMesh.position.set(cx, floorY + wall / 2, cz);
+  wallMesh.castShadow = wallMesh.receiveShadow = true;
+  root.add(wallMesh);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(r + 2.8, 0.9, 8, 18), wallMat);
+  lip.rotation.x = Math.PI / 2;
+  lip.position.set(cx, floorY + wall, cz);
+  root.add(lip);
+  const floor = new THREE.Mesh(new THREE.CylinderGeometry(r + 2.2, r + 2.2, 1.6, 18),
+    new THREE.MeshStandardMaterial({ color: 0x55504a, roughness: 0.9 }));
+  floor.position.set(cx, floorY - 0.8, cz);
+  floor.receiveShadow = true;
+  root.add(floor);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(r - 3, 0.35, 8, 24),
+    new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffd34d, emissiveIntensity: 2.2, roughness: 0.4 }));
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(cx, floorY + 0.2, cz);
+  root.add(ring);
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    boxes.push({ x: cx + Math.cos(a) * (r + 2.4), z: cz + Math.sin(a) * (r + 2.4), hw: 3.6, hd: 3.6, top: floorY + wall });
+  }
+  return { x: cx, y: floorY, z: cz, r: r - 3, pos: new THREE.Vector3(cx, floorY, cz), ringMat: ring.material };
+}
+
 // ---------------- biomes ----------------
 
 function buildBelt(root, colliders, rng) {
@@ -223,11 +261,18 @@ function buildBelt(root, colliders, rng) {
 
 function buildDunes(root, colliders, rng) {
   const n = makeNoise(1201);
-  const heightFn = (x, z) => {
+  const TOWN = { x: 620, z: -1150 };
+  const rawH = (x, z) => {
     const dune = n.fbm(x * 0.0012 + 3, z * 0.0012, 4) * 52;
     const mesaMask = n.fbm(x * 0.00034 + 13, z * 0.00034 + 5, 3);
     const mesa = THREE.MathUtils.smoothstep(mesaMask, 0.6, 0.74) * 105;
     return dune + mesa;
+  };
+  // the settlement sits on a flattened apron carved into the dunes
+  const heightFn = (x, z) => {
+    const d = Math.hypot(x - TOWN.x, z - TOWN.z);
+    const s = THREE.MathUtils.smoothstep(d, 130, 330);
+    return 14 * (1 - s) + rawH(x, z) * s;
   };
   const colorFn = (col, h, ny, x, z) => {
     // sand → baked orange → dark mesa rock caps
@@ -241,18 +286,56 @@ function buildDunes(root, colliders, rng) {
   root.add(gradientSky(0x4e88cf, 0x9cbde2, 0xffd9a2));
   root.add(makeSun('#fff3c8', 'rgba(255,214,140,0.75)', 900, new THREE.Vector3(2400, 900, -2600)));
 
-  // rock spires (cosmetic; the tall ones get colliders)
+  // rock spires (cosmetic; the tall ones get colliders) — kept out of town
   const spireGeo = new THREE.ConeGeometry(6, 30, 6);
   const spireMat = new THREE.MeshStandardMaterial({ color: 0x6e4a2c, roughness: 1, flatShading: true });
   scatter(root, spireGeo, spireMat, 60, () => {
-    const a = rand(rng) * Math.PI * 2, r = 150 + rand(rng) * 1700;
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    let x = 0, z = 0, tries = 0;
+    do {
+      const a = rand(rng) * Math.PI * 2, r = 150 + rand(rng) * 1700;
+      x = Math.cos(a) * r; z = Math.sin(a) * r; tries++;
+    } while (Math.hypot(x - TOWN.x, z - TOWN.z) < 420 && tries < 8);
     const sc = 0.7 + rand(rng) * 1.9;
     return { x, y: heightFn(x, z) + 15 * sc - 2, z, ry: rand(rng) * 3, scale: sc };
   }, colliders, spec => spec.scale > 1.5 ? { r: 9 * spec.scale, y: spec.y } : null);
 
+  // the settlement: dome huts, vaporators, and an open-top docking bay
+  const boxes = [];
+  const hutMat = new THREE.MeshStandardMaterial({ color: 0xcbb48c, roughness: 1, flatShading: true });
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.4;
+    const r = 55 + (i % 3) * 22;
+    const hx = TOWN.x + Math.cos(a) * r, hz = TOWN.z + Math.sin(a) * r;
+    const hut = new THREE.Mesh(new THREE.SphereGeometry(7 + (i % 3) * 2, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), hutMat);
+    hut.position.set(hx, 14, hz);
+    hut.castShadow = hut.receiveShadow = true;
+    root.add(hut);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.4, 1), new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: 1 }));
+    door.position.set(hx + Math.cos(a) * 6.4, 15.6, hz + Math.sin(a) * 6.4);
+    door.lookAt(hx, 15.6, hz);
+    root.add(door);
+  }
+  const vapMat = new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 0.8, metalness: 0.4 });
+  for (let i = 0; i < 4; i++) {
+    const a = i * 1.9 + 0.8, r = 100 + i * 26;
+    const vx = TOWN.x + Math.cos(a) * r, vz = TOWN.z + Math.sin(a) * r;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 16, 6), vapMat);
+    pole.position.set(vx, 22, vz);
+    pole.castShadow = true;
+    root.add(pole);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 2.4), vapMat);
+    cap.position.set(vx, 30.6, vz);
+    root.add(cap);
+  }
+  const pad = dockingBay(root, boxes, TOWN.x, 14, TOWN.z, { r: 18, wall: 9, color: 0xb59a6e });
+  pad.approachAlt = 250;
+
   return {
     getHeight: heightFn,
+    canLand: true,
+    pads: [pad],
+    boxes,
+    boxHit: boxHitFor(boxes),
     atmosphere: { bg: 0xffd9a2, fog: 0xe8c08a, fogDensity: 0.00042, hemiSky: 0xffe8c0, hemiGround: 0x9a6b3a, hemiI: 0.8,
       keyColor: 0xfff2d8, keyI: 1.5, keyPos: [900, 500, -800], fillColor: 0xff9a50, fillI: 0.25, exposure: 1.08 },
     spawn: { x: 0, y: heightFn(0, 900) + 90, z: 900 },
@@ -673,8 +756,136 @@ function buildStarkiller(root, colliders, rng, engine) {
   };
 }
 
+// ---------------- CORUSCANT (ecumenopolis — take-off & landing) ----------------
+function buildCity(root, colliders, rng) {
+  const boxes = [];      // AABB tower colliders {x,z,hw,hd,top}
+  const heightFn = () => 0;   // the undercity haze deck
+
+  // undercity: dark ground with a wash of lights
+  const groundTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d');
+    g.fillStyle = '#0b0d14'; g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 900; i++) {
+      g.fillStyle = Math.random() < 0.7 ? 'rgba(255,214,140,0.5)' : 'rgba(140,190,255,0.4)';
+      g.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 2, 1);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(10, 10);
+    return tex;
+  })();
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE),
+    new THREE.MeshStandardMaterial({ map: groundTex, emissiveMap: groundTex, emissive: 0xffffff,
+      emissiveIntensity: 0.5, color: 0x14161f, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  root.add(ground);
+
+  // hangar sites (index 0 = home bay). Kept clear of the tower grid below.
+  const baySpecs = [
+    { x: 0, z: 500, roof: 150 },
+    { x: -700, z: -600, roof: 190 },
+  ];
+  const pads = [];
+
+  // tower grid — lit-window boxes; every tower is a collider
+  const winTex = (() => {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#171a24'; g.fillRect(0, 0, 64, 128);
+    for (let y = 2; y < 126; y += 5) for (let x = 2; x < 62; x += 6) {
+      if (Math.random() < 0.42) {
+        g.fillStyle = Math.random() < 0.75 ? 'rgba(255,220,150,0.85)' : 'rgba(150,200,255,0.8)';
+        g.fillRect(x, y, 3, 2);
+      }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  })();
+  const towerMat = new THREE.MeshStandardMaterial({ map: winTex, emissiveMap: winTex,
+    emissive: 0xffffff, emissiveIntensity: 0.55, color: 0x2a2e3c, roughness: 0.8, metalness: 0.2 });
+  const towerGeo = new THREE.BoxGeometry(1, 1, 1);
+  scatter(root, towerGeo, towerMat, 150, () => {
+    let x = 0, z = 0, tries = 0;
+    do {
+      x = (rand(rng) - 0.5) * 3400; z = (rand(rng) - 0.5) * 3400;
+      tries++;
+    } while (tries < 12 && baySpecs.some(pd => Math.hypot(x - pd.x, z - pd.z) < 130));
+    const hw = 9 + rand(rng) * 15, hd = 9 + rand(rng) * 15;
+    const h = 70 + rand(rng) * rand(rng) * 280;
+    boxes.push({ x, z, hw, hd, top: h });
+    return { x, y: h / 2, z, sx: hw * 2, sy: h, sz: hd * 2 };
+  }, null, null);
+
+  // hangar towers: a wide lit block with an open-top docking bay on the roof
+  for (const bs of baySpecs) {
+    const bldg = new THREE.Mesh(new THREE.BoxGeometry(52, bs.roof, 52), towerMat);
+    bldg.position.set(bs.x, bs.roof / 2, bs.z);
+    bldg.castShadow = bldg.receiveShadow = true;
+    root.add(bldg);
+    boxes.push({ x: bs.x, z: bs.z, hw: 26, hd: 26, top: bs.roof });
+    const pad = dockingBay(root, boxes, bs.x, bs.roof, bs.z, { r: 19, wall: 10, color: 0x4a4f62 });
+    pad.approachAlt = 430;
+    pads.push(pad);
+  }
+
+  // speeder-lane traffic: two streams of drifting lights
+  const lanes = [];
+  for (const spec of [{ y: 120, z: -150, dir: 1, col: 0xffd9a0 }, { y: 170, z: 160, dir: -1, col: 0xff6a5a }]) {
+    const N = 90;
+    const posArr = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      posArr[i * 3] = (rand(rng) - 0.5) * 3600;
+      posArr[i * 3 + 1] = spec.y + (rand(rng) - 0.5) * 14;
+      posArr[i * 3 + 2] = spec.z + (rand(rng) - 0.5) * 40;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: spec.col, size: 2.4,
+      sizeAttenuation: true, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+    pts.frustumCulled = false;
+    root.add(pts);
+    lanes.push({ geo, dir: spec.dir, N });
+  }
+
+  root.add(gradientSky(0x121a33, 0x3c3352, 0xd88a58));
+  root.add(makeSun('#ffd9a8', 'rgba(255,160,90,0.7)', 700, new THREE.Vector3(-2600, 260, -1600)));
+  root.add(makeStars(700, 0.55, 0.55));
+
+  return {
+    getHeight: heightFn,
+    canLand: true,
+    pads, boxes,
+    boxHit: boxHitFor(boxes),
+    clearOf: (x, z, r, y) => {
+      for (const b of boxes) {
+        if (Math.abs(x - b.x) < b.hw + r && Math.abs(z - b.z) < b.hd + r && (y === undefined || b.top > y - r)) return false;
+      }
+      return true;
+    },
+    ringAlt: { min: 150, span: 110 },
+    aiFloor: 360,
+    atmosphere: { bg: 0x121a33, fog: 0x2b2540, fogDensity: 0.00048, hemiSky: 0x8a7ca8, hemiGround: 0x1a1622, hemiI: 0.6,
+      keyColor: 0xffc890, keyI: 0.95, keyPos: [-900, 300, -500], fillColor: 0x4a5a9a, fillI: 0.4, exposure: 1.12 },
+    spawn: { x: 0, y: 180, z: 500 },
+    update: (dt) => {
+      for (const ln of lanes) {
+        const a = ln.geo.attributes.position;
+        for (let i = 0; i < ln.N; i++) {
+          let x = a.getX(i) + ln.dir * (55 + (i % 7) * 6) * dt;
+          if (x > 1900) x = -1900; else if (x < -1900) x = 1900;
+          a.setX(i, x);
+        }
+        a.needsUpdate = true;
+      }
+    },
+  };
+}
+
 const BUILDERS = { belt: buildBelt, dunes: buildDunes, glacier: buildGlacier, clouds: buildClouds, ember: buildEmber,
-  deathstar: buildDeathstar, starkiller: buildStarkiller };
+  deathstar: buildDeathstar, starkiller: buildStarkiller, city: buildCity };
 
 // ---------------- public API ----------------
 
@@ -695,6 +906,13 @@ export function buildWorld(engine, id) {
     trench: spec.trench,
     oscSite: spec.oscSite,
     setCharge: spec.setCharge,
+    canLand: !!spec.canLand,
+    pads: spec.pads,
+    boxes: spec.boxes,
+    boxHit: spec.boxHit,
+    clearOf: spec.clearOf,
+    ringAlt: spec.ringAlt,
+    aiFloor: spec.aiFloor,
     spawn: spec.spawn,
     boundsR: 2100,
     update(dt) { time += dt; if (spec.update) spec.update(dt, time); },

@@ -61,6 +61,8 @@
       <div id="warning" class="warning hidden">PULL UP</div>
     </div>
 
+    <button id="autoland-btn" class="hidden" aria-label="Auto-land">AUTO-LAND</button>
+
     <!-- Live control-mapping overlay (shown over gameplay) -->
     <div id="mapper" class="hidden" aria-live="polite">
       <div class="map-title">CONTROL MAPPING</div>
@@ -132,6 +134,13 @@
             <span class="msub">VOLCANIC WORLD</span>
             <span class="mobj">DESTROY THE SHIELD GRID</span>
             <span class="mbest">BEST <b data-best="ember">—</b></span>
+          </button>
+          <button class="mcard" data-mission="city">
+            <span class="planet p-city"></span>
+            <span class="mname">CORUSCANT</span>
+            <span class="msub">ECUMENOPOLIS</span>
+            <span class="mobj">TAKE OFF · THREAD THE TOWERS · LAND</span>
+            <span class="mbest">BEST <b data-best="city">—</b></span>
           </button>
           <button class="mcard" data-mission="deathstar">
             <span class="planet p-deathstar"></span>
@@ -216,6 +225,7 @@
           <div class="mrow"><span class="mkeys"><kbd>Shift</kbd></span><span>engine boost (drains, then recharges)</span></div>
           <div class="mrow"><span class="mkeys"><kbd>Space</kbd> / click / <kbd>L</kbd></span><span>fire quad lasers</span></div>
           <div class="mrow"><span class="mkeys"><kbd>F</kbd> / right-click</span><span>fire proton torpedo (needs a lock)</span></div>
+          <div class="mrow"><span class="mkeys"><kbd>G</kbd> / button</span><span>auto-land when a docking bay is marked — hard stick input takes back control</span></div>
           <div class="mrow"><span class="mkeys"><kbd>P</kbd> / <kbd>Esc</kbd></span><span>pause</span></div>
           <div class="mrow"><span class="mkeys">🕹 flight stick</span><span>stick steers (pull back to climb) · twist rolls · slider throttles · trigger fires · thumb button torpedo</span></div>
           <div class="mrow"><span class="mkeys">⚙ settings</span><span>invert pitch, sensitivity, deadzone &amp; curve sliders — plus MAP CONTROLS to rebind keys/buttons in flight</span></div>

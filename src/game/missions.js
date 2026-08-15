@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { buildRing } from './models.js';
 
-export const MISSION_ORDER = ['belt', 'dunes', 'glacier', 'clouds', 'ember', 'deathstar', 'starkiller'];
+export const MISSION_ORDER = ['belt', 'dunes', 'glacier', 'clouds', 'ember', 'city', 'deathstar', 'starkiller'];
 
 export const MISSIONS = {
   belt: {
@@ -17,11 +17,16 @@ export const MISSIONS = {
   },
   dunes: {
     id: 'dunes', name: 'JAKKARA',
-    par: 300,
-    winMsg: 'Course flown and raiders downed. The Jakkara settlements can breathe again.',
+    par: 380,
+    winMsg: 'Course flown, raiders downed, and a clean set-down in the bay. The settlement can breathe again.',
+    winTitle: 'SAFE IN THE BAY',
     phases: [
       { type: 'rings', count: 10, banner: 'FOLLOW THE NAV RINGS' },
       { type: 'clear', enemy: 'tie', count: 6, waves: 2, banner: 'RAIDERS INBOUND — ENGAGE' },
+      { type: 'goto', at: { x: 620, z: -1150 }, alt: 170, radius: 100, text: 'HEAD FOR THE SETTLEMENT',
+        banner: 'PATROL DONE — HEAD FOR THE SETTLEMENT' },
+      { type: 'land', pad: 0, text: 'LAND IN THE DOCKING BAY · G = AUTO-LAND',
+        banner: 'DOCKING BAY OPEN — SET DOWN INSIDE, OR HIT AUTO-LAND' },
     ],
   },
   glacier: {
@@ -49,6 +54,22 @@ export const MISSIONS = {
     phases: [
       { type: 'clear', enemy: 'generator', count: 4, turretsEach: 2, banner: 'DESTROY THE SHIELD GENERATORS' },
       { type: 'clear', enemy: 'tie', count: 5, waves: 1, banner: 'GARRISON SCRAMBLED — FINISH THIS' },
+    ],
+  },
+  city: {
+    id: 'city', name: 'CORUSCANT',
+    par: 420,
+    winTitle: 'ROUTE COMPLETE',
+    winMsg: 'Cargo delivered, lanes swept clean, and a textbook final touchdown. Coruscant Control logs another perfect run.',
+    phases: [
+      { type: 'takeoff', pad: 0, text: 'THROTTLE UP — LIFT OFF', banner: 'CLEARANCE GRANTED — THROTTLE UP AND LIFT OFF' },
+      { type: 'goto', at: { x: -360, z: -60 }, alt: 260, radius: 90, text: 'FOLLOW THE SKYLANE WEST',
+        banner: 'FOLLOW THE SKYLANE — MIND THE TOWERS' },
+      { type: 'land', pad: 1, text: 'LAND IN THE FREIGHT BAY · G = AUTO-LAND',
+        banner: 'FREIGHT BAY OPEN — SET DOWN INSIDE, OR HIT AUTO-LAND' },
+      { type: 'takeoff', text: 'THROTTLE UP — LIFT OFF', banner: 'CARGO LOADED — BACK INTO THE LANES' },
+      { type: 'clear', enemy: 'tie', count: 4, waves: 1, banner: 'PIRATES IN THE LANES — RUN THEM OFF' },
+      { type: 'land', pad: 0, text: 'RETURN HOME · G = AUTO-LAND', banner: 'ROUTE COMPLETE — COME HOME AND SET DOWN' },
     ],
   },
   deathstar: {
@@ -123,6 +144,7 @@ export function createMissionRunner(ctx) {
   let killTally = 0;
   let done = false;
   let gotoPoint = null;
+  let landTarget = null;
   let lastObj = null;
   const warned = new Set();
   const prevShip = new THREE.Vector3();
@@ -171,17 +193,24 @@ export function createMissionRunner(ctx) {
         while (d < -Math.PI) d += Math.PI * 2;
         heading += d * 0.45;
       }
-      pos.x += Math.sin(heading) * step;
-      pos.z += -Math.cos(heading) * step;
-      // altitude: hug the terrain at varied heights; free band in space
-      let y;
-      if (world.getHeight) {
-        const floor = flight.floorAt(pos.x, pos.z);
-        y = floor + 40 + Math.random() * 90;
-      } else {
-        y = ship.position.y + (Math.random() - 0.5) * 180;
-      }
-      pos.y = y;
+      // step forward, retrying at wider headings if a tower blocks the gate
+      const px = pos.x, pz = pos.z;
+      let tries = 0;
+      do {
+        pos.x = px + Math.sin(heading) * step;
+        pos.z = pz - Math.cos(heading) * step;
+        // altitude: fixed band in cities, terrain-hugging elsewhere, free in space
+        if (world.ringAlt) {
+          const base = world.getHeight ? flight.floorAt(pos.x, pos.z) : 0;
+          pos.y = base + world.ringAlt.min + Math.random() * world.ringAlt.span;
+        } else if (world.getHeight) {
+          pos.y = flight.floorAt(pos.x, pos.z) + 40 + Math.random() * 90;
+        } else {
+          pos.y = ship.position.y + (Math.random() - 0.5) * 180;
+        }
+        if (!world.clearOf || world.clearOf(pos.x, pos.z, 26, pos.y)) break;
+        heading += 0.55;
+      } while (++tries < 10);
       pts.push(pos.clone());
     }
     // build meshes oriented along the course
@@ -213,6 +242,10 @@ export function createMissionRunner(ctx) {
     } else if (phase.type === 'goto') {
       const y = flight.floorAt(phase.at.x, phase.at.z);
       gotoPoint = new THREE.Vector3(phase.at.x, (y === -Infinity ? 0 : y) + (phase.alt ?? 20), phase.at.z);
+    } else if (phase.type === 'takeoff') {
+      if (phase.pad != null && world.pads) flight.placeLanded(world.pads[phase.pad]);
+    } else if (phase.type === 'land') {
+      landTarget = world.pads && world.pads[phase.pad];
     } else if (phase.type === 'clear') {
       if (phase.spawnPort) {
         const p = phase.spawnPort;
@@ -269,6 +302,8 @@ export function createMissionRunner(ctx) {
     let t = '';
     if (phase.type === 'rings') t = `NAV RINGS  ${nextRing} / ${phase.count}`;
     else if (phase.type === 'goto') t = phase.text || 'REACH THE MARKER';
+    else if (phase.type === 'takeoff') t = phase.text || 'THROTTLE UP — LIFT OFF';
+    else if (phase.type === 'land') t = phase.text || 'LAND ON THE MARKED PLATFORM';
     else if (phase.enemy === 'tie') t = `RAIDERS DOWN  ${killTally} / ${phase.count}`;
     else if (phase.enemy === 'probe') t = `PROBES DESTROYED  ${killTally} / ${phase.count}`;
     else if (phase.enemy === 'generator') t = `GENERATORS DOWN  ${killTally} / ${phase.count}`;
@@ -331,6 +366,23 @@ export function createMissionRunner(ctx) {
       if (hot) hot.grp.rotation.z += dt * 0.4;
     } else if (phase.type === 'goto') {
       if (gotoPoint && ship.position.distanceTo(gotoPoint) < (phase.radius || 50)) nextPhase();
+    } else if (phase.type === 'takeoff') {
+      if (!flight.state.landed && flight.state.speed > 40) nextPhase();
+    } else if (phase.type === 'land') {
+      if (landTarget) {
+        // the target pad's edge lights pulse; others idle
+        if (world.pads) for (const pd of world.pads) {
+          if (pd.ringMat) pd.ringMat.emissiveIntensity = pd === landTarget
+            ? 2.6 + Math.sin(systems.run.time * 6) * 1.3 : 1.0;
+        }
+        if (flight.state.landed &&
+            Math.hypot(ship.position.x - landTarget.x, ship.position.z - landTarget.z) < landTarget.r + 4) {
+          onBanner('TOUCHDOWN CONFIRMED', false);
+          audio.ring();
+          systems.run.score += 300;
+          nextPhase();
+        }
+      }
     } else if (phase.type === 'clear') {
       if (phase.enemy === 'tie') {
         if (toSpawn > 0 && systems.aliveCount('tie') === 0) {
@@ -359,6 +411,10 @@ export function createMissionRunner(ctx) {
     if (phase.type === 'goto') {
       return gotoPoint ? { point: gotoPoint, rings: [{ pos: gotoPoint }], nextRing: 0 } : null;
     }
+    if (phase.type === 'takeoff') return null;
+    if (phase.type === 'land') {
+      return landTarget ? { point: landTarget.pos, rings: [{ pos: landTarget.pos }], nextRing: 0 } : null;
+    }
     // nearest alive target of the phase kind
     let best = null, bestD = Infinity;
     const pool = phase.enemy === 'tie' ? systems.ties : phase.enemy === 'probe' ? systems.probes
@@ -374,5 +430,6 @@ export function createMissionRunner(ctx) {
 
   return { start, stop, update, objectiveInfo, refreshObjective,
     get def() { return def; }, get done() { return done; }, get phaseIdx() { return phaseIdx; },
-    get ringsPassed() { return nextRing; } };
+    get ringsPassed() { return nextRing; },
+    get landPadTarget() { return phase && phase.type === 'land' ? landTarget : null; } };
 }

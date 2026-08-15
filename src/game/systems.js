@@ -261,7 +261,8 @@ export function createSystems(ctx) {
       const x = ship.position.x + Math.cos(a) * r;
       const z = ship.position.z + Math.sin(a) * r;
       const gy = groundY(x, z, -240);
-      const y = Math.min(Math.max(gy + 60 + Math.random() * 160, ship.position.y - 160), 700);
+      let y = Math.min(Math.max(gy + 60 + Math.random() * 160, ship.position.y - 160), 700);
+      if (world && world.aiFloor) y = Math.max(y, world.aiFloor + 20);
       e.grp.position.set(x, Math.max(y, gy + 40), z);
       e.dir.copy(ship.position).sub(e.grp.position).normalize();
       e.speed = run.diff.espeed * (0.85 + Math.random() * 0.3);
@@ -406,8 +407,9 @@ export function createSystems(ctx) {
         V2.set(-e.grp.position.x, 0, -e.grp.position.z).normalize();
         e.dir.lerp(V2, Math.min(1, 2 * dt)).normalize();
       }
-      // terrain avoidance
-      const floor = flight.floorAt(e.grp.position.x, e.grp.position.z);
+      // terrain avoidance; cities also keep fighters above the tower tops
+      let floor = flight.floorAt(e.grp.position.x, e.grp.position.z);
+      if (world && world.aiFloor) floor = Math.max(floor === -Infinity ? 0 : floor, world.aiFloor - 24);
       if (floor !== -Infinity) {
         const clr = e.grp.position.y - floor;
         if (clr < 24) { e.dir.y = Math.max(e.dir.y, 0.45); e.dir.normalize(); }
@@ -548,8 +550,11 @@ export function createSystems(ctx) {
       l.mesh.position.addScaledVector(l.vel, dt);
       l.ttl -= dt;
       if (l.ttl <= 0) { l.active = false; l.mesh.visible = false; continue; }
-      // terrain
+      // terrain / buildings
       if (world && world.getHeight && l.mesh.position.y < flight.floorAt(l.mesh.position.x, l.mesh.position.z)) {
+        spark(l.mesh.position); l.active = false; l.mesh.visible = false; continue;
+      }
+      if (world && world.boxHit && world.boxHit(l.mesh.position)) {
         spark(l.mesh.position); l.active = false; l.mesh.visible = false; continue;
       }
       // hostiles (the exhaust port is ray-shielded — torpedoes only; shielded
@@ -588,6 +593,9 @@ export function createSystems(ctx) {
       if (world && world.getHeight && l.mesh.position.y < flight.floorAt(l.mesh.position.x, l.mesh.position.z)) {
         l.active = false; l.mesh.visible = false; continue;
       }
+      if (world && world.boxHit && world.boxHit(l.mesh.position)) {
+        l.active = false; l.mesh.visible = false; continue;
+      }
       if (segHit(l.prev, l.mesh.position, ship.position, 2.4)) {
         l.active = false; l.mesh.visible = false;
         hurtPlayer(8);
@@ -610,6 +618,7 @@ export function createSystems(ctx) {
       t.ttl -= dt;
       let dead = t.ttl <= 0;
       if (world && world.getHeight && t.mesh.position.y < flight.floorAt(t.mesh.position.x, t.mesh.position.z)) dead = true;
+      if (world && world.boxHit && world.boxHit(t.mesh.position)) dead = true;
       // proximity fuse on any unshielded hostile
       for (const e of hostiles()) {
         if (e.shielded) continue;

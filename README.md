@@ -7,7 +7,8 @@ sectors, each a different biome with its own missions:
 | Sector | Biome | Mission |
 | --- | --- | --- |
 | **KESSEL VERGE** | Asteroid belt | Destroy the raider wing among the rocks |
-| **JAKKARA** | Desert world | Nav-ring canyon run, then raiders |
+| **JAKKARA** | Desert world | Canyon run, raiders, then fly home and land in the settlement's docking bay |
+| **CORUSCANT** | Ecumenopolis | Take off from your hangar bay, run cargo across the tower canyons, land in docking bays (auto-land available) |
 | **VORN** | Ice world | Hunt the probe droids before they report in |
 | **BESHAR** | Gas giant | Ring slalom over the cloud deck, then raiders |
 | **EMBERON** | Volcanic world | Take down the turret-guarded shield grid |
@@ -25,6 +26,9 @@ same engine philosophy, but free flight instead of rails.
 - **Q / E** (or **A / D**) — spin/roll · **W / S** — throttle · **Shift** — boost
 - **Space / click / L** — quad lasers
 - **F / right-click** — proton torpedo (hold an enemy in the reticle to lock)
+- **G** (or the on-screen button) — auto-land when a docking bay is marked;
+  hard stick input takes control back. Touch down manually by approaching a bay
+  slow and shallow; throttle up to lift off again.
 - **P / Esc** — pause
 - **Touch** — left virtual stick, auto-fire, BOOST / TORP / throttle buttons
 - **Gamepad** — left stick steers, dpad throttle, face buttons fire/boost/torpedo

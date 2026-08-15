@@ -15,9 +15,41 @@ const cast = g => {
   return g;
 };
 
+// procedural panel-line hull plating — detail without any external assets
+const hullTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#d7dde6'; g.fillRect(0, 0, 256, 256);
+  // panel patches in slightly varied tones
+  for (let i = 0; i < 60; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256;
+    const w = 14 + Math.random() * 48, h = 10 + Math.random() * 34;
+    g.fillStyle = `rgba(${168 + Math.random() * 40 | 0},${175 + Math.random() * 40 | 0},${190 + Math.random() * 40 | 0},0.5)`;
+    g.fillRect(x, y, w, h);
+  }
+  // panel lines
+  g.strokeStyle = 'rgba(105,112,126,0.75)'; g.lineWidth = 1;
+  for (let i = 0; i < 26; i++) {
+    const v = Math.random() < 0.5;
+    const p = Math.random() * 256, q = Math.random() * 256, len = 30 + Math.random() * 120;
+    g.beginPath();
+    if (v) { g.moveTo(p, q); g.lineTo(p, q + len); } else { g.moveTo(p, q); g.lineTo(p + len, q); }
+    g.stroke();
+  }
+  // rivets + scorch flecks
+  for (let i = 0; i < 140; i++) {
+    g.fillStyle = Math.random() < 0.8 ? 'rgba(120,128,142,0.6)' : 'rgba(150,110,80,0.45)';
+    g.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 1.5);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+})();
+
 // shared materials
 const M = {
-  hull:    metal(0xd7dde6, 0.55, 0.55),
+  hull:    new THREE.MeshStandardMaterial({ map: hullTex, metalness: 0.55, roughness: 0.55 }),
   hullDk:  metal(0x8b93a1, 0.6, 0.5),
   panel:   metal(0x5b6472, 0.7, 0.45),
   red:     new THREE.MeshStandardMaterial({ color: 0xd23b2f, metalness: 0.3, roughness: 0.6 }),
@@ -50,16 +82,29 @@ export function buildXWing() {
   nose.position.z = -2.15;
   g.add(nose);
 
-  // cockpit canopy
+  // cockpit canopy + frame spine
   const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.glass);
   canopy.scale.set(1, 0.7, 1.5);
   canopy.position.set(0, 0.24, -0.5);
   g.add(canopy);
+  const spine = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.02, 0.86), M.hullDk);
+  spine.position.set(0, 0.445, -0.5);
+  g.add(spine);
 
-  // astromech bump
-  const r2 = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.panel);
+  // squadron band on the nose
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.295, 0.315, 0.14, 10), M.red);
+  band.rotation.x = Math.PI / 2;
+  band.position.set(0, 0, -1.72);
+  g.add(band);
+
+  // astromech — blue dome droid behind the cockpit
+  const r2 = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    metal(0x3a6fd8, 0.4, 0.5));
   r2.position.set(0, 0.26, 0.35);
   g.add(r2);
+  const r2eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), M.tieDk);
+  r2eye.position.set(0, 0.36, 0.24);
+  g.add(r2eye);
 
   // engine block + 4 glowing thrusters at the rear
   const eBlock = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.8), M.hullDk);
@@ -141,6 +186,7 @@ export function buildTIE() {
   g.add(eye);
   const wingGeo = new THREE.CylinderGeometry(1.15, 1.15, 0.08, 6);
   const strutGeo = new THREE.BoxGeometry(0.5, 0.16, 0.16);
+  const spokeGeo = new THREE.BoxGeometry(0.05, 2.08, 0.05);
   for (const s of [-1, 1]) {
     const wing = new THREE.Mesh(wingGeo, M.tieDk);
     wing.rotation.z = Math.PI / 2; wing.rotation.y = Math.PI / 2;
@@ -149,6 +195,17 @@ export function buildTIE() {
     const rim = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.05, 6, 6), M.tie);
     rim.rotation.y = Math.PI / 2; rim.position.x = s * 1.19;
     g.add(rim);
+    // radial panel ribs + hub — the solar-array look
+    for (let k = 0; k < 3; k++) {
+      const spoke = new THREE.Mesh(spokeGeo, M.tie);
+      spoke.position.x = s * 1.21;
+      spoke.rotation.x = k * Math.PI / 3 + Math.PI / 6;
+      g.add(spoke);
+    }
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 8), M.tie);
+    hub.rotation.z = Math.PI / 2;
+    hub.position.x = s * 1.21;
+    g.add(hub);
     const strut = new THREE.Mesh(strutGeo, M.tie);
     strut.position.x = s * 0.6;
     g.add(strut);

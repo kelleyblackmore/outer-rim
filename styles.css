@@ -118,6 +118,11 @@ canvas#hud{position:absolute;inset:0;width:100%;height:100%;display:block;pointe
 .p-glacier{background:radial-gradient(circle at 36% 32%,#eaf6ff,#9cc8e8 55%,#4c7cb0);}
 .p-clouds{background:radial-gradient(circle at 36% 32%,#ffd2b0,#e08a6a 45%,#9c4f63 75%,#5e3050);}
 .p-ember{background:radial-gradient(circle at 36% 32%,#ff9a52,#b03a1a 50%,#3a120a);}
+.p-city{background:radial-gradient(circle at 36% 32%,#6a7088,#3c4258 55%,#1c2030);position:relative;overflow:hidden;}
+.p-city::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background-image:repeating-linear-gradient(90deg,rgba(255,214,140,.55) 0 1px,transparent 1px 5px),
+    repeating-linear-gradient(0deg,rgba(255,214,140,.35) 0 1px,transparent 1px 7px);
+  opacity:.5;mix-blend-mode:screen;}
 .p-deathstar{background:radial-gradient(circle at 36% 32%,#b8bfc9,#6a7280 55%,#2e3440);position:relative;}
 .p-deathstar::before{content:"";position:absolute;left:9px;top:11px;width:17px;height:17px;border-radius:50%;
   background:radial-gradient(circle at 42% 38%,#8a93a2,#454c59 72%);box-shadow:inset -2px -2px 4px rgba(0,0,0,.55);}
@@ -160,6 +165,14 @@ canvas#hud{position:absolute;inset:0;width:100%;height:100%;display:block;pointe
 .slider-wrap b{font-size:12px;color:var(--gold);min-width:44px;text-align:right;font-variant-numeric:tabular-nums;}
 .slider-wrap input[type=range]{width:150px;accent-color:var(--gold);cursor:pointer;}
 @media (max-width:520px){.set-row{flex-direction:column;align-items:flex-start;}}
+
+/* auto-land */
+#autoland-btn{position:absolute;right:max(18px,env(safe-area-inset-right));bottom:calc(max(16px,env(safe-area-inset-bottom)) + 118px);
+  z-index:5;pointer-events:auto;cursor:pointer;font-family:var(--mono);font-weight:800;letter-spacing:2px;font-size:12px;
+  padding:10px 16px;border-radius:6px;border:1.5px solid var(--green);color:var(--green);background:rgba(8,16,12,.7);
+  text-shadow:0 0 10px rgba(87,255,143,.4);}
+#autoland-btn:hover{background:rgba(87,255,143,.14);}
+#autoland-btn.on{background:var(--green);color:#06130a;animation:blink 1s steps(2) infinite;}
 
 /* live control-mapping overlay */
 #mapper{position:absolute;top:12%;left:50%;transform:translateX(-50%);z-index:5;

@@ -82,8 +82,14 @@ function refreshBests() {
 refreshBests();
 
 // ---------------- player settings ----------------
-const SETTING_DEFAULTS = { invertY: 'off', autoLevel: 'on', camBank: 'full',
+const SETTING_DEFAULTS = { invertY: 'off', autoLevel: 'off', camBank: 'full',
   sensitivity: 100, throttleResp: 100, deadzone: 15, curve: 55 };
+// one-time migration: auto-level used to default ON — clear stale saves so the
+// new manual-flight default actually lands
+if (!localStorage.getItem(LS_PREFIX + 'set.v2')) {
+  localStorage.removeItem(LS_PREFIX + 'set.autoLevel');
+  localStorage.setItem(LS_PREFIX + 'set.v2', '1');
+}
 const SLIDER_KEYS = ['sensitivity', 'throttleResp', 'deadzone', 'curve'];
 const settings = {};
 for (const k of Object.keys(SETTING_DEFAULTS)) {
@@ -151,6 +157,7 @@ const MAP_ACTIONS = [
   ['fire', 'FIRE LASERS'], ['torpedo', 'FIRE TORPEDO'], ['boost', 'BOOST'],
   ['thrUp', 'THROTTLE UP'], ['thrDn', 'THROTTLE DOWN'],
   ['rollLeft', 'ROLL LEFT'], ['rollRight', 'ROLL RIGHT'],
+  ['autoland', 'AUTO-LAND'],
 ];
 let mapperOn = false, mapIdx = 0;
 function startMapper() {
@@ -214,6 +221,7 @@ function showScreen(name) {
 function setPlayingUI(on) {
   $('frame').classList.toggle('hidden', !on);
   $('pause-btn').classList.toggle('hidden', !on);
+  if (!on) $('autoland-btn').classList.add('hidden');
   if (input.state.isTouch) $('touch').classList.toggle('hidden', !on);
 }
 
@@ -382,11 +390,33 @@ function gpuWatch(now) {
 }
 
 // ---------------- per-frame playing tick (shared by rAF loop + debug step) ----
+// ---------------- auto-land ----------------
+function toggleAutoLand() {
+  const pad = runner.landPadTarget;
+  if (flight.autoLanding) {
+    flight.cancelAutoLand();
+    hud.banner('AUTO-LAND OFF — YOU HAVE THE SHIP', true);
+  } else if (pad && !flight.state.landed && ship.position.distanceTo(pad.pos) < 700) {
+    flight.startAutoLand(pad);
+    hud.banner('AUTO-LAND ENGAGED', false);
+  }
+}
+$('autoland-btn').addEventListener('click', () => { audio.init(); toggleAutoLand(); });
+
 let warp = 0;
 function playTick(dt) {
   systems.update(dt);            // includes flight.update
   runner.update(dt);
   world.update(dt);
+
+  // auto-land availability + engage key
+  const landPad = runner.landPadTarget;
+  const canAuto = landPad && !flight.state.landed && ship.position.distanceTo(landPad.pos) < 700;
+  const albtn = $('autoland-btn');
+  albtn.classList.toggle('hidden', !(canAuto || flight.autoLanding));
+  albtn.classList.toggle('on', flight.autoLanding);
+  albtn.textContent = flight.autoLanding ? 'AUTO-LAND ◉' : 'AUTO-LAND';
+  if (input.state.autolandEdge) toggleAutoLand();
   engine.followShadow(ship.position);
   // boost pulls the frame toward the horizon (high quality only, eased)
   warp += ((flight.state.boosting && !reduceMotion ? 0.11 : 0) - warp) * Math.min(1, 3.5 * dt);

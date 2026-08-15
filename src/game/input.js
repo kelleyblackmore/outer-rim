@@ -1,13 +1,13 @@
 // input.js — unified free-flight controls: keyboard, mouse-steer, touch stick,
 // gamepad, flight stick. steerX turns (yaw+bank), steerY pitches; both are RATE
 // demands in -1..1. Buttons/keys are fully rebindable (see binds + captureNext).
-export const BINDABLE_ACTIONS = ['fire', 'torpedo', 'boost', 'thrUp', 'thrDn', 'rollLeft', 'rollRight'];
+export const BINDABLE_ACTIONS = ['fire', 'torpedo', 'boost', 'thrUp', 'thrDn', 'rollLeft', 'rollRight', 'autoland'];
 
 const DEFAULT_BINDS = {
   keys: { fire: [' ', 'l'], torpedo: ['f'], boost: ['shift'], thrUp: ['w'], thrDn: ['s'],
-    rollLeft: ['a', 'q'], rollRight: ['d', 'e'] },
-  pad:  { fire: [0, 7], torpedo: [2, 3], boost: [6, 1], thrUp: [12], thrDn: [13], rollLeft: [4], rollRight: [5] },
-  joy:  { fire: [0], torpedo: [1], boost: [2, 3], thrUp: [], thrDn: [], rollLeft: [], rollRight: [] },
+    rollLeft: ['a', 'q'], rollRight: ['d', 'e'], autoland: ['g'] },
+  pad:  { fire: [0, 7], torpedo: [2, 3], boost: [6, 1], thrUp: [12], thrDn: [13], rollLeft: [4], rollRight: [5], autoland: [9] },
+  joy:  { fire: [0], torpedo: [1], boost: [2, 3], thrUp: [], thrDn: [], rollLeft: [], rollRight: [], autoland: [5] },
   // {padId, axis, sf} — which device axis is the throttle lever and which way
   // is forward. null = the classic HOTAS slider default (primary stick axis 3).
   throttleAxis: null,
@@ -23,10 +23,12 @@ export function createInput(canvas) {
     throttleSet: null,         // 0..1 absolute (HOTAS throttle slider), or null
     fire: false, boost: false,
     torpedoEdge: false,
+    autolandEdge: false,
     pausePressed: false,
     isTouch, autofire: isTouch
   };
-  const src = { kbFire: false, mouseFire: false, kbBoost: false, torpEdge: false, padTorpPrev: false };
+  const src = { kbFire: false, mouseFire: false, kbBoost: false, torpEdge: false, padTorpPrev: false,
+    autoEdge: false, padAutoPrev: false };
   const keys = {};
   let mouse = null;            // {nx,ny} in -1..1, or null until first move
 
@@ -127,6 +129,7 @@ export function createInput(canvas) {
     if (binds.keys.fire.includes(k)) src.kbFire = true;
     if (binds.keys.torpedo.includes(k)) src.torpEdge = true;
     if (binds.keys.boost.includes(k)) src.kbBoost = true;
+    if (binds.keys.autoland.includes(k)) src.autoEdge = true;
     if (k === 'p' || k === 'escape') state.pausePressed = true;
   });
   addEventListener('keyup', e => {
@@ -219,6 +222,7 @@ export function createInput(canvas) {
     // separate throttle quadrant works. Standard pads use thumbstick
     // conventions; joysticks are X = turn, Y = pull-back-to-climb, twist = roll.
     let gx = 0, gy = 0, gr = 0, padAxis = false, padFire = false, padBoost = false, padTorp = false, gt = 0;
+    let padAuto = false;
     let throttleSet = null, isJoystick = false;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const connected = [];
@@ -247,6 +251,7 @@ export function createInput(canvas) {
         if (anyBtn(p, bmap.fire)) padFire = true;
         if (anyBtn(p, bmap.boost)) padBoost = true;
         if (anyBtn(p, bmap.torpedo)) padTorp = true;
+        if (anyBtn(p, bmap.autoland)) padAuto = true;
         if (anyBtn(p, bmap.thrUp)) gt += 1;
         if (anyBtn(p, bmap.thrDn)) gt -= 1;
         if (anyBtn(p, bmap.rollLeft)) gr -= 1;
@@ -299,13 +304,16 @@ export function createInput(canvas) {
 
     if (padTorp && !src.padTorpPrev) src.torpEdge = true;
     src.padTorpPrev = padTorp;
+    if (padAuto && !src.padAutoPrev) src.autoEdge = true;
+    src.padAutoPrev = padAuto;
 
     state.fire = src.kbFire || src.mouseFire || padFire || (isTouch && state.autofire);
     state.boost = src.kbBoost || padBoost;
     state.torpedoEdge = src.torpEdge;
+    state.autolandEdge = src.autoEdge;
   }
 
-  function resetEdges() { src.torpEdge = false; state.torpedoEdge = false; state.pausePressed = false; }
+  function resetEdges() { src.torpEdge = false; state.torpedoEdge = false; src.autoEdge = false; state.autolandEdge = false; state.pausePressed = false; }
   function clearAll() {
     for (const k in keys) keys[k] = false;
     src.kbFire = src.mouseFire = src.kbBoost = false;
