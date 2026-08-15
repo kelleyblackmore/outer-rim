@@ -105,6 +105,25 @@ export function createEngine(canvas) {
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.5, 0.62);
   composer.addPass(bloom);
 
+  // radial warp blur — driven by boost via setWarp(); free when disabled
+  const radial = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, strength: { value: 0 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float strength;
+      varying vec2 vUv;
+      void main(){
+        vec2 dir = vec2(0.5) - vUv;
+        vec4 sum = vec4(0.0);
+        for (int i = 0; i < 8; i++) {
+          sum += texture2D(tDiffuse, vUv + dir * strength * (float(i) / 8.0));
+        }
+        gl_FragColor = sum / 8.0;
+      }`,
+  });
+  radial.enabled = false;
+  composer.addPass(radial);
+
   const fxaa = new ShaderPass(FXAAShader);
   composer.addPass(fxaa);
 
@@ -172,6 +191,11 @@ export function createEngine(canvas) {
     resize();
   }
 
+  function setWarp(s) {
+    radial.uniforms.strength.value = s;
+    radial.enabled = s > 0.004 && quality === 'high';
+  }
+
   function render() { composer.render(); }
 
   window.addEventListener('resize', () => resize());
@@ -179,7 +203,7 @@ export function createEngine(canvas) {
   resize();
 
   return { THREE, renderer, scene, camera, composer, bloom, fxaa, render, resize, setQuality, setAtmosphere,
-    followShadow,
+    followShadow, setWarp,
     get quality() { return quality; }, get size() { return { W, H }; },
     get lost() { return contextLost; }, get coarse() { return coarse; } };
 }

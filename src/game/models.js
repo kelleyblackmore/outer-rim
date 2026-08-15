@@ -153,6 +153,15 @@ export function buildTIE() {
     strut.position.x = s * 0.6;
     g.add(strut);
   }
+  // twin ion engines — the green-white glow TIEs show from behind
+  const ions = [];
+  for (const s of [-1, 1]) {
+    const ion = new THREE.Mesh(new THREE.CircleGeometry(0.15, 10),
+      new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xa8ffc0, emissiveIntensity: 2.0, roughness: 0.4 }));
+    ion.position.set(s * 0.2, -0.04, 0.57);
+    g.add(ion); ions.push(ion);
+  }
+  g.userData.ions = ions;
   g.userData.eye = eye;
   g.scale.setScalar(1.15);
   return cast(g);

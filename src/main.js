@@ -220,6 +220,7 @@ function setWorldFor(id) {
 
 function toTitle() {
   hideMapper();
+  warp = 0; engine.setWarp(0);
   state = 'title'; showScreen('title'); setPlayingUI(false);
   runner.stop();
   systems.clearHostiles();
@@ -374,11 +375,15 @@ function gpuWatch(now) {
 }
 
 // ---------------- per-frame playing tick (shared by rAF loop + debug step) ----
+let warp = 0;
 function playTick(dt) {
   systems.update(dt);            // includes flight.update
   runner.update(dt);
   world.update(dt);
   engine.followShadow(ship.position);
+  // boost pulls the frame toward the horizon (high quality only, eased)
+  warp += ((flight.state.boosting && !reduceMotion ? 0.11 : 0) - warp) * Math.min(1, 3.5 * dt);
+  engine.setWarp(warp);
   flight.updateCamera(engine.camera, dt, reduceMotion);
   const snap = systems.hudSnapshot(runner.objectiveInfo());
   hud.updateFrame(systems.run, flight.state, snap, dt);

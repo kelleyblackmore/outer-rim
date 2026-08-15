@@ -101,6 +101,105 @@ export function createSystems(ctx) {
   const boomLight = new THREE.PointLight(0xffa040, 0, 700, 1.2);
   scene.add(boomLight);
 
+  // smoke puffs — soft dark sprites that swell and drift up
+  const smokeTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 4, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(70,64,60,0.85)');
+    grad.addColorStop(0.55, 'rgba(48,44,42,0.45)');
+    grad.addColorStop(1, 'rgba(30,28,28,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  })();
+  const smokes = Array.from({ length: 24 }, () => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false }));
+    s.visible = false; scene.add(s);
+    return { spr: s, active: false, life: 0, max: 1, size: 10, vel: new THREE.Vector3() };
+  });
+  function spawnSmoke(pos, size, life) {
+    const s = smokes.find(x => !x.active);
+    if (!s) return;
+    s.spr.position.copy(pos);
+    s.spr.position.x += (Math.random() - 0.5) * size * 0.5;
+    s.spr.position.y += (Math.random() - 0.5) * size * 0.5;
+    s.spr.position.z += (Math.random() - 0.5) * size * 0.5;
+    s.size = size;
+    s.spr.scale.setScalar(size * 0.5);
+    s.spr.material.opacity = 0.55;
+    s.vel.set((Math.random() - 0.5) * 3, 2.5 + Math.random() * 3, (Math.random() - 0.5) * 3);
+    s.life = 0; s.max = life || (0.9 + Math.random() * 0.7);
+    s.active = true; s.spr.visible = true;
+  }
+
+  // shockwave rings — a thin expanding circle at the blast
+  const shockTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d');
+    g.strokeStyle = 'rgba(255,225,180,0.9)';
+    g.lineWidth = 5;
+    g.beginPath(); g.arc(64, 64, 56, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(255,200,140,0.35)';
+    g.lineWidth = 12;
+    g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.stroke();
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  })();
+  const shocks = Array.from({ length: 6 }, () => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: shockTex, transparent: true,
+      depthWrite: false, blending: THREE.AdditiveBlending }));
+    s.visible = false; scene.add(s);
+    return { spr: s, active: false, life: 0, max: 0.5, size: 30 };
+  });
+  function spawnShock(pos, size) {
+    const s = shocks.find(x => !x.active);
+    if (!s) return;
+    s.spr.position.copy(pos);
+    s.size = size;
+    s.spr.scale.setScalar(size * 0.2);
+    s.spr.material.opacity = 0.7;
+    s.life = 0; s.max = 0.5;
+    s.active = true; s.spr.visible = true;
+  }
+
+  // speed dust — near-field particles streaming past the ship
+  const DUST_N = 160;
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(DUST_N * 3), 3));
+  const dustMat = new THREE.PointsMaterial({ color: 0xcfe4ff, size: 0.5, sizeAttenuation: true,
+    transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+  const dust = new THREE.Points(dustGeo, dustMat);
+  dust.frustumCulled = false;
+  scene.add(dust);
+  let dustSeeded = false;
+  function updateDust(dt) {
+    const speed = flight.state.speed;
+    const target = THREE.MathUtils.clamp((speed - 55) / 120, 0, 0.5) + (flight.state.boosting ? 0.2 : 0);
+    dustMat.opacity += (target - dustMat.opacity) * Math.min(1, 4 * dt);
+    if (dustMat.opacity < 0.02) { dustSeeded = false; return; }
+    flight.forward(_fwd);
+    const a = dustGeo.attributes.position;
+    for (let i = 0; i < DUST_N; i++) {
+      let x = a.getX(i), y = a.getY(i), z = a.getZ(i);
+      const dx = x - ship.position.x, dy = y - ship.position.y, dz = z - ship.position.z;
+      const along = dx * _fwd.x + dy * _fwd.y + dz * _fwd.z;
+      if (!dustSeeded || along < -18 || (dx * dx + dy * dy + dz * dz) > 4900) {
+        // respawn ahead, scattered off-axis
+        const r = 8 + Math.random() * 30, th = Math.random() * Math.PI * 2;
+        V3.set(Math.cos(th) * r, Math.sin(th) * r, 0).applyQuaternion(ship.quaternion);
+        x = ship.position.x + _fwd.x * (25 + Math.random() * 35) + V3.x;
+        y = ship.position.y + _fwd.y * (25 + Math.random() * 35) + V3.y;
+        z = ship.position.z + _fwd.z * (25 + Math.random() * 35) + V3.z;
+        a.setXYZ(i, x, y, z);
+      }
+    }
+    dustSeeded = true;
+    a.needsUpdate = true;
+  }
+
   // ---- run state ----
   const run = {
     diff: DIFF.pilot, hull: 100, shields: 100, score: 0, kills: 0, time: 0,
@@ -127,7 +226,11 @@ export function createSystems(ctx) {
     clearHostiles();
     particles.forEach(p => { p.active = false; p.mesh.visible = false; });
     flashes.forEach(f => { f.active = false; f.spr.visible = false; });
+    smokes.forEach(s => { s.active = false; s.spr.visible = false; });
+    shocks.forEach(s => { s.active = false; s.spr.visible = false; });
+    dustMat.opacity = 0; dustSeeded = false;
     boomLight.intensity = 0;
+    smokeCd = 0;
   }
 
   function clearHostiles() {
@@ -319,6 +422,10 @@ export function createSystems(ctx) {
       V2.copy(e.grp.position).add(e.dir);
       e.grp.lookAt(V2);
       e.grp.rotateZ(Math.sin(run.time * 1.7 + e.phase) * 0.35);
+      if (e.grp.userData.ions) {
+        const hot = 1.8 + Math.sin(run.time * 22 + e.phase) * 0.4 + (e.mode === 'extend' ? 1.2 : 0);
+        for (const ion of e.grp.userData.ions) ion.material.emissiveIntensity = hot;
+      }
 
       // fire when roughly boresighted
       e.fireCd -= dt;
@@ -552,14 +659,16 @@ export function createSystems(ctx) {
     const f = flashes.find(x => !x.active);
     if (f) {
       f.spr.position.copy(pos);
-      f.size = big ? 78 : 34;
+      f.size = big ? 54 : 28;
       f.spr.scale.setScalar(f.size * 0.4);
-      f.spr.material.opacity = 1;
-      f.life = 0; f.max = big ? 0.45 : 0.3;
+      f.spr.material.opacity = 0.85;
+      f.life = 0; f.max = big ? 0.42 : 0.28;
       f.active = true; f.spr.visible = true;
     }
     boomLight.position.copy(pos);
     boomLight.intensity = big ? 900 : 380;
+    spawnShock(pos, big ? 90 : 40);
+    for (let i = 0, n = big ? 5 : 2; i < n; i++) spawnSmoke(pos, big ? 26 : 12);
     const count = big ? 30 : 16;
     let made = 0;
     for (const p of particles) {
@@ -575,6 +684,16 @@ export function createSystems(ctx) {
     }
   }
   function spark(pos) {
+    // small impact flash so hits pop
+    const f = flashes.find(x => !x.active);
+    if (f) {
+      f.spr.position.copy(pos);
+      f.size = 9;
+      f.spr.scale.setScalar(4);
+      f.spr.material.opacity = 0.9;
+      f.life = 0; f.max = 0.16;
+      f.active = true; f.spr.visible = true;
+    }
     let made = 0;
     for (const p of particles) {
       if (p.active) continue;
@@ -603,8 +722,25 @@ export function createSystems(ctx) {
       f.life += dt;
       const t = f.life / f.max;
       f.spr.scale.setScalar(f.size * (0.4 + t * 2.0));
-      f.spr.material.opacity = Math.max(0, Math.pow(1 - t, 1.6));
+      f.spr.material.opacity = Math.max(0, 0.85 * Math.pow(1 - t, 2.0));
       if (f.life >= f.max) { f.active = false; f.spr.visible = false; }
+    }
+    for (const s of smokes) {
+      if (!s.active) continue;
+      s.life += dt;
+      const t = s.life / s.max;
+      s.spr.position.addScaledVector(s.vel, dt);
+      s.spr.scale.setScalar(s.size * (0.5 + t * 1.6));
+      s.spr.material.opacity = 0.55 * (1 - t);
+      if (s.life >= s.max) { s.active = false; s.spr.visible = false; }
+    }
+    for (const s of shocks) {
+      if (!s.active) continue;
+      s.life += dt;
+      const t = s.life / s.max;
+      s.spr.scale.setScalar(s.size * (0.2 + t * 1.1));
+      s.spr.material.opacity = 0.85 * Math.pow(1 - t, 1.4);
+      if (s.life >= s.max) { s.active = false; s.spr.visible = false; }
     }
     boomLight.intensity *= Math.exp(-8 * dt);
     if (boomLight.intensity < 1) boomLight.intensity = 0;
@@ -631,6 +767,7 @@ export function createSystems(ctx) {
   }
 
   // ---------------- main update ----------------
+  let smokeCd = 0;
   function update(dt) {
     if (run.over) { updateParticles(dt); return; }
     run.time += dt;
@@ -657,6 +794,17 @@ export function createSystems(ctx) {
     run.shieldCd -= dt;
     if (run.shieldCd <= 0 && run.shields < 100) run.shields = Math.min(100, run.shields + run.diff.regen * dt);
     if (run.hurt > 0) run.hurt -= dt;
+
+    // hull damage reads as a smoke trail
+    smokeCd -= dt;
+    if (run.hull < 40 && smokeCd <= 0) {
+      smokeCd = 0.10 + (run.hull / 40) * 0.2;
+      V.copy(ship.position);
+      flight.forward(_fwd);
+      V.addScaledVector(_fwd, -1.6);
+      spawnSmoke(V, 2.2 + (40 - run.hull) * 0.05, 0.7);
+    }
+    updateDust(dt);
   }
 
   // ---------------- HUD snapshot ----------------

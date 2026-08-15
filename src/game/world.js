@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { makeNoise } from './noise.js';
 
 const TERRAIN_SIZE = 6400;
-const TERRAIN_SEG = 150;
+const TERRAIN_SEG = 200;
 
 // ---------------- shared builders ----------------
 
