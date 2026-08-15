@@ -61,6 +61,19 @@
       <div id="warning" class="warning hidden">PULL UP</div>
     </div>
 
+    <!-- Live control-mapping overlay (shown over gameplay) -->
+    <div id="mapper" class="hidden" aria-live="polite">
+      <div class="map-title">CONTROL MAPPING</div>
+      <div class="map-action">PRESS A KEY OR BUTTON FOR</div>
+      <div id="map-current" class="map-current">FIRE LASERS</div>
+      <div id="map-bound" class="map-bound"></div>
+      <div class="map-hint">ESC SKIPS · FLY WHILE YOU MAP</div>
+      <div class="map-btns">
+        <button id="map-skip" class="btn ghost">SKIP</button>
+        <button id="map-done" class="btn ghost">FINISH</button>
+      </div>
+    </div>
+
     <!-- Touch controls -->
     <div id="touch" class="hidden">
       <div id="stick-zone"><div id="stick-base"><div id="stick-knob"></div></div></div>
@@ -158,11 +171,19 @@
           </div>
           <div class="set-row">
             <span class="set-label">STEERING SENSITIVITY<i>pitch &amp; turn rate</i></span>
-            <div class="seg" data-set="sensitivity" role="group" aria-label="Steering sensitivity">
-              <button class="diff" data-val="low">LOW</button>
-              <button class="diff" data-val="normal">NORMAL</button>
-              <button class="diff" data-val="high">HIGH</button>
-            </div>
+            <div class="slider-wrap"><input type="range" id="sl-sensitivity" min="50" max="160" step="5" aria-label="Steering sensitivity"><b id="sl-sensitivity-v">100%</b></div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">THROTTLE RESPONSE<i>how fast the throttle ramps</i></span>
+            <div class="slider-wrap"><input type="range" id="sl-throttleResp" min="30" max="150" step="5" aria-label="Throttle response"><b id="sl-throttleResp-v">100%</b></div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">STICK DEADZONE<i>ignore small stick movement (drift)</i></span>
+            <div class="slider-wrap"><input type="range" id="sl-deadzone" min="0" max="30" step="1" aria-label="Stick deadzone"><b id="sl-deadzone-v">15%</b></div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">STICK CURVE<i>linear ↔ soft center, sharp edges</i></span>
+            <div class="slider-wrap"><input type="range" id="sl-curve" min="0" max="100" step="5" aria-label="Stick response curve"><b id="sl-curve-v">55%</b></div>
           </div>
           <div class="set-row">
             <span class="set-label">AUTO-LEVEL ASSIST<i>banks into turns and levels the wings for you</i></span>
@@ -179,6 +200,10 @@
             </div>
           </div>
         </div>
+        <div class="menu-buttons">
+          <button id="map-btn" class="btn">MAP CONTROLS IN FLIGHT</button>
+          <button id="binds-reset" class="btn ghost">RESET CONTROLS</button>
+        </div>
         <button id="set-back" class="btn primary">DONE</button>
       </div>
 
@@ -193,6 +218,7 @@
           <div class="mrow"><span class="mkeys"><kbd>F</kbd> / right-click</span><span>fire proton torpedo (needs a lock)</span></div>
           <div class="mrow"><span class="mkeys"><kbd>P</kbd> / <kbd>Esc</kbd></span><span>pause</span></div>
           <div class="mrow"><span class="mkeys">🕹 flight stick</span><span>stick steers (pull back to climb) · twist rolls · slider throttles · trigger fires · thumb button torpedo</span></div>
+          <div class="mrow"><span class="mkeys">⚙ settings</span><span>invert pitch, sensitivity, deadzone &amp; curve sliders — plus MAP CONTROLS to rebind keys/buttons in flight</span></div>
           <div class="mrow touch-only"><span class="mkeys">left stick</span><span>steer · lasers auto-fire · ▲▼ throttle</span></div>
         </div>
         <p class="hint-lock">Keep an enemy inside your reticle to build a <b>torpedo lock</b>. The gold diamond marks your next ring; the radar at the bottom shows hostiles around you. Watch your altitude — the <b>PULL UP</b> warning means terrain.</p>

@@ -82,16 +82,29 @@ function refreshBests() {
 refreshBests();
 
 // ---------------- player settings ----------------
-const SETTING_DEFAULTS = { invertY: 'off', sensitivity: 'normal', autoLevel: 'on', camBank: 'full' };
+const SETTING_DEFAULTS = { invertY: 'off', autoLevel: 'on', camBank: 'full',
+  sensitivity: 100, throttleResp: 100, deadzone: 15, curve: 55 };
+const SLIDER_KEYS = ['sensitivity', 'throttleResp', 'deadzone', 'curve'];
 const settings = {};
 for (const k of Object.keys(SETTING_DEFAULTS)) {
-  const v = localStorage.getItem(LS_PREFIX + 'set.' + k);
-  settings[k] = v !== null ? v : SETTING_DEFAULTS[k];
+  let v = localStorage.getItem(LS_PREFIX + 'set.' + k);
+  if (v === null) v = SETTING_DEFAULTS[k];
+  else if (SLIDER_KEYS.includes(k)) {
+    // migrate the old low/normal/high strings to slider percentages
+    v = v === 'low' ? 75 : v === 'high' ? 135 : v === 'normal' ? 100 : +v;
+    if (!Number.isFinite(v)) v = SETTING_DEFAULTS[k];
+  }
+  settings[k] = v;
 }
 function applySettings() {
-  input.setOptions({ invertY: settings.invertY === 'on' });
+  input.setOptions({
+    invertY: settings.invertY === 'on',
+    deadzone: settings.deadzone / 100,
+    curve: settings.curve / 100,
+  });
   flight.setOptions({
-    sensitivity: settings.sensitivity === 'low' ? 0.75 : settings.sensitivity === 'high' ? 1.35 : 1,
+    sensitivity: settings.sensitivity / 100,
+    throttleResp: settings.throttleResp / 100,
     autoLevel: settings.autoLevel !== 'off',
     camBank: settings.camBank === 'reduced' ? 0.15 : 0.5,
   });
@@ -99,6 +112,10 @@ function applySettings() {
     const key = seg.dataset.set;
     seg.querySelectorAll('[data-val]').forEach(b => b.classList.toggle('sel', b.dataset.val === settings[key]));
   });
+  for (const k of SLIDER_KEYS) {
+    const el = $('sl-' + k);
+    if (el) { el.value = settings[k]; $('sl-' + k + '-v').textContent = settings[k] + '%'; }
+  }
 }
 document.querySelectorAll('.seg [data-val]').forEach(b => b.addEventListener('click', () => {
   const key = b.closest('.seg').dataset.set;
@@ -106,7 +123,78 @@ document.querySelectorAll('.seg [data-val]').forEach(b => b.addEventListener('cl
   localStorage.setItem(LS_PREFIX + 'set.' + key, b.dataset.val);
   applySettings();
 }));
+for (const k of SLIDER_KEYS) {
+  const el = $('sl-' + k);
+  if (el) el.addEventListener('input', () => {
+    settings[k] = +el.value;
+    localStorage.setItem(LS_PREFIX + 'set.' + k, String(settings[k]));
+    applySettings();
+  });
+}
 applySettings();
+
+// ---------------- control bindings ----------------
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_PREFIX + 'bind') || 'null');
+  if (saved) input.setBinds(saved);
+} catch (e) { /* corrupted save — defaults stand */ }
+function saveBinds() { localStorage.setItem(LS_PREFIX + 'bind', JSON.stringify(input.getBinds())); }
+$('binds-reset').addEventListener('click', () => {
+  input.resetBinds(); saveBinds();
+  $('binds-reset').textContent = 'CONTROLS RESET ✓';
+  setTimeout(() => { $('binds-reset').textContent = 'RESET CONTROLS'; }, 1200);
+});
+
+// ---------------- live control mapping (map buttons while flying) ----------------
+const MAP_ACTIONS = [
+  ['fire', 'FIRE LASERS'], ['torpedo', 'FIRE TORPEDO'], ['boost', 'BOOST'],
+  ['thrUp', 'THROTTLE UP'], ['thrDn', 'THROTTLE DOWN'],
+  ['rollLeft', 'ROLL LEFT'], ['rollRight', 'ROLL RIGHT'],
+];
+let mapperOn = false, mapIdx = 0;
+function startMapper() {
+  // mapping happens in flight: resume the paused mission, or launch one
+  if (state === 'settings' && settingsReturn === 'pause') {
+    state = 'paused'; showScreen('pause'); togglePause(false);
+  } else if (state !== 'playing') {
+    startMission(currentMission || 'belt');
+  }
+  mapperOn = true; mapIdx = 0;
+  $('mapper').classList.remove('hidden');
+  nextCapture();
+}
+function nextCapture() {
+  if (!mapperOn) return;
+  if (mapIdx >= MAP_ACTIONS.length) return endMapper(true);
+  const [, label] = MAP_ACTIONS[mapIdx];
+  $('map-current').textContent = label;
+  input.captureNext(res => {
+    if (!mapperOn) return;
+    if (!res.cancel) {
+      input.assignBinding(MAP_ACTIONS[mapIdx][0], res);
+      saveBinds();
+      $('map-bound').textContent = label + '  →  ' + res.label;
+    }
+    mapIdx++;
+    setTimeout(nextCapture, 500);
+  });
+}
+function endMapper(finished) {
+  mapperOn = false;
+  input.cancelCapture();
+  $('map-current').textContent = 'CONTROLS SAVED';
+  $('map-bound').textContent = '';
+  setTimeout(() => $('mapper').classList.add('hidden'), 1000);
+}
+function hideMapper() {
+  if (!mapperOn) return;
+  mapperOn = false;
+  input.cancelCapture();
+  $('mapper').classList.add('hidden');
+}
+$('map-btn').addEventListener('click', startMapper);
+$('map-skip').addEventListener('click', () => { if (!mapperOn) return; input.cancelCapture(); mapIdx++; nextCapture(); });
+$('map-done').addEventListener('click', () => endMapper(false));
 
 // ---------------- state machine ----------------
 let state = 'loading';
@@ -131,6 +219,7 @@ function setWorldFor(id) {
 }
 
 function toTitle() {
+  hideMapper();
   state = 'title'; showScreen('title'); setPlayingUI(false);
   runner.stop();
   systems.clearHostiles();
@@ -153,6 +242,7 @@ function startMission(id) {
 
 function finish(won, failMsg) {
   if (state !== 'playing') return;
+  hideMapper();
   state = 'result';
   const def = MISSIONS[currentMission];
   if (won) {

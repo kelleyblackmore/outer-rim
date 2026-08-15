@@ -1,5 +1,16 @@
-// input.js — unified free-flight controls: keyboard, mouse-steer, touch stick, gamepad.
-// steerX turns (yaw+bank), steerY pitches; both are RATE demands in -1..1.
+// input.js — unified free-flight controls: keyboard, mouse-steer, touch stick,
+// gamepad, flight stick. steerX turns (yaw+bank), steerY pitches; both are RATE
+// demands in -1..1. Buttons/keys are fully rebindable (see binds + captureNext).
+export const BINDABLE_ACTIONS = ['fire', 'torpedo', 'boost', 'thrUp', 'thrDn', 'rollLeft', 'rollRight'];
+
+const DEFAULT_BINDS = {
+  keys: { fire: [' ', 'l'], torpedo: ['f'], boost: ['shift'], thrUp: ['w'], thrDn: ['s'],
+    rollLeft: ['a', 'q'], rollRight: ['d', 'e'] },
+  pad:  { fire: [0, 7], torpedo: [2, 3], boost: [6, 1], thrUp: [12], thrDn: [13], rollLeft: [4], rollRight: [5] },
+  joy:  { fire: [0], torpedo: [1], boost: [2, 3], thrUp: [], thrDn: [], rollLeft: [], rollRight: [] },
+};
+const clone = o => JSON.parse(JSON.stringify(o));
+
 export function createInput(canvas) {
   const isTouch = matchMedia('(pointer:coarse)').matches;
   const state = {
@@ -15,37 +26,76 @@ export function createInput(canvas) {
   const src = { kbFire: false, mouseFire: false, kbBoost: false, torpEdge: false, padTorpPrev: false };
   const keys = {};
   let mouse = null;            // {nx,ny} in -1..1, or null until first move
-  let invertY = false;         // settings: flight-stick pitch on mouse/keys/pad/touch
 
-  function setOptions(o) { if (o.invertY !== undefined) invertY = !!o.invertY; }
+  // ---------- options (settings screen pushes these) ----------
+  const opts = { invertY: false, deadzone: 0.15, curve: 0.55 };
+  function setOptions(o) {
+    if (o.invertY !== undefined) opts.invertY = !!o.invertY;
+    if (o.deadzone !== undefined) opts.deadzone = Math.min(0.35, Math.max(0, o.deadzone));
+    if (o.curve !== undefined) opts.curve = Math.min(1, Math.max(0, o.curve));
+  }
 
-  const DEAD = 0.07;
-  const expo = v => {
+  // response shaping: linear→cubic blend after the deadzone
+  const shape = t => (1 - opts.curve) * t + opts.curve * t * t * t;
+  const axis = (v, dz) => {
     const s = Math.sign(v), a = Math.abs(v);
-    if (a < DEAD) return 0;
-    const t = (a - DEAD) / (1 - DEAD);
-    return s * (0.45 * t + 0.55 * t * t * t);   // gentle center, strong edges
+    if (a < dz) return 0;
+    return s * shape((a - dz) / (1 - dz));
   };
+
+  // ---------- bindings ----------
+  let binds = clone(DEFAULT_BINDS);
+  const anyDown = list => list.some(k => keys[k]);
+  const anyBtn = (p, list) => list.some(i => p.buttons[i] && p.buttons[i].pressed);
+  function setBinds(b) {
+    if (!b) return;
+    for (const dev of ['keys', 'pad', 'joy']) {
+      if (!b[dev]) continue;
+      for (const a of BINDABLE_ACTIONS) if (Array.isArray(b[dev][a])) binds[dev][a] = b[dev][a].slice();
+    }
+  }
+  function getBinds() { return clone(binds); }
+  function resetBinds() { binds = clone(DEFAULT_BINDS); }
+  // rebind: the control replaces the action's list and leaves every other action
+  function assignBinding(action, target) {
+    const map = binds[target.dev];
+    if (!map || !BINDABLE_ACTIONS.includes(action)) return getBinds();
+    for (const a of BINDABLE_ACTIONS) map[a] = map[a].filter(id => id !== target.id);
+    map[action] = [target.id];
+    return getBinds();
+  }
+
+  // ---------- live capture (mapping mode) ----------
+  let capture = null;          // cb({dev,id,label} | {cancel:true})
+  function captureNext(cb) { capture = cb; }
+  function cancelCapture() { capture = null; }
+  const keyLabel = k => k === ' ' ? 'SPACE' : k.length === 1 ? k.toUpperCase() : k.toUpperCase();
 
   // ---------- keyboard ----------
   addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
     if (e.repeat) return;
+    if (capture) {
+      e.preventDefault();
+      const cb = capture; capture = null;
+      cb(k === 'escape' ? { cancel: true } : { dev: 'keys', id: k, label: keyLabel(k) });
+      return;
+    }
     keys[k] = true;
-    if (k === ' ' || k === 'l') src.kbFire = true;
-    if (k === 'f') src.torpEdge = true;
-    if (k === 'shift') src.kbBoost = true;
+    if (binds.keys.fire.includes(k)) src.kbFire = true;
+    if (binds.keys.torpedo.includes(k)) src.torpEdge = true;
+    if (binds.keys.boost.includes(k)) src.kbBoost = true;
     if (k === 'p' || k === 'escape') state.pausePressed = true;
   });
   addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
     keys[k] = false;
-    if (k === ' ' || k === 'l') src.kbFire = false;
-    if (k === 'shift') src.kbBoost = false;
+    if (binds.keys.fire.includes(k)) src.kbFire = false;
+    if (binds.keys.boost.includes(k)) src.kbBoost = false;
   });
 
-  // ---------- mouse (desktop steer + fire) ----------
+  // ---------- mouse (desktop steer + fire; not rebindable) ----------
   if (!isTouch) {
     canvas.addEventListener('mousemove', e => {
       const r = canvas.getBoundingClientRect();
@@ -110,65 +160,81 @@ export function createInput(canvas) {
   };
 
   // ---------- per-frame combine ----------
+  let prevButtons = [];
   function update() {
-    // keyboard axes
+    // keyboard axes (arrows steer; the rest through bindings)
     let kx = 0, ky = 0, kr = 0, kt = 0;
     if (keys['arrowleft']) kx -= 1;
     if (keys['arrowright']) kx += 1;
     if (keys['arrowup']) ky += 1;
     if (keys['arrowdown']) ky -= 1;
-    if (keys['a'] || keys['q']) kr -= 1;   // Q/E spin the ship, same as A/D
-    if (keys['d'] || keys['e']) kr += 1;
-    if (keys['w'] || keys['__thrUp']) kt += 1;
-    if (keys['s'] || keys['__thrDn']) kt -= 1;
+    if (anyDown(binds.keys.rollLeft)) kr -= 1;
+    if (anyDown(binds.keys.rollRight)) kr += 1;
+    if (anyDown(binds.keys.thrUp) || keys['__thrUp']) kt += 1;
+    if (anyDown(binds.keys.thrDn) || keys['__thrDn']) kt -= 1;
 
     // gamepad OR flight stick (HOTAS). Standard-mapped pads use thumbstick
     // conventions; anything else with 3+ axes is treated as a joystick:
     // X = turn, Y = pull-back-to-climb, twist = roll, slider = absolute throttle.
     let gx = 0, gy = 0, gr = 0, padAxis = false, padFire = false, padBoost = false, padTorp = false, gt = 0;
     let throttleSet = null, isJoystick = false;
-    const dzAxis = (v, dz) => Math.abs(v) > dz ? v : 0;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p || !p.connected) continue;
-      if (p.mapping === 'standard') {
-        gx = dzAxis(p.axes[0], 0.18);
-        gy = -dzAxis(p.axes[1], 0.18);                            // stick up = climb
-        gr = p.axes.length > 2 ? dzAxis(p.axes[2], 0.18) : 0;
-        padFire = !!((p.buttons[0] && p.buttons[0].pressed) || (p.buttons[7] && p.buttons[7].pressed));
-        padBoost = !!((p.buttons[6] && p.buttons[6].pressed) || (p.buttons[1] && p.buttons[1].pressed));
-        padTorp = !!((p.buttons[2] && p.buttons[2].pressed) || (p.buttons[3] && p.buttons[3].pressed));
-        if (p.buttons[12] && p.buttons[12].pressed) gt += 1;      // dpad = throttle trim
-        if (p.buttons[13] && p.buttons[13].pressed) gt -= 1;
-      } else {
-        // flight stick: Logitech Extreme 3D / T.16000M / HOTAS layouts
-        isJoystick = true;
-        gx = dzAxis(p.axes[0], 0.12);
-        gy = dzAxis(p.axes[1], 0.12);                             // pull back (+) = climb
-        gr = p.axes.length > 2 ? dzAxis(p.axes[2], 0.22) : 0;     // twist rudder = roll
+      isJoystick = p.mapping !== 'standard';
+      const bmap = isJoystick ? binds.joy : binds.pad;
+
+      // capture: report the first rising-edge button, and swallow it
+      if (capture) {
+        for (let i = 0; i < p.buttons.length; i++) {
+          const pressed = !!(p.buttons[i] && p.buttons[i].pressed);
+          if (pressed && !prevButtons[i]) {
+            const cb = capture; capture = null;
+            cb({ dev: isJoystick ? 'joy' : 'pad', id: i, label: 'BTN ' + i });
+            break;
+          }
+        }
+      }
+      const capturing = !!capture;
+
+      if (isJoystick) {
+        gx = axis(p.axes[0], opts.deadzone);
+        gy = axis(p.axes[1], opts.deadzone);                      // pull back (+) = climb
+        gr = p.axes.length > 2 ? axis(p.axes[2], opts.deadzone + 0.08) : 0;   // twist drifts more
         if (p.axes.length > 3 && Number.isFinite(p.axes[3])) {
           throttleSet = (1 - p.axes[3]) / 2;                      // slider forward = full
         }
-        padFire = !!(p.buttons[0] && p.buttons[0].pressed);       // trigger
-        padTorp = !!(p.buttons[1] && p.buttons[1].pressed);       // thumb button
-        padBoost = !!((p.buttons[2] && p.buttons[2].pressed) || (p.buttons[3] && p.buttons[3].pressed));
+      } else {
+        gx = axis(p.axes[0], opts.deadzone);
+        gy = -axis(p.axes[1], opts.deadzone);                     // stick up = climb
+        gr = p.axes.length > 2 ? axis(p.axes[2], opts.deadzone) : 0;
       }
-      padAxis = !!(gx || gy);
+      if (!capturing) {
+        padFire = anyBtn(p, bmap.fire);
+        padBoost = anyBtn(p, bmap.boost);
+        padTorp = anyBtn(p, bmap.torpedo);
+        if (anyBtn(p, bmap.thrUp)) gt += 1;
+        if (anyBtn(p, bmap.thrDn)) gt -= 1;
+        if (anyBtn(p, bmap.rollLeft)) gr -= 1;
+        if (anyBtn(p, bmap.rollRight)) gr += 1;
+      }
+      prevButtons = p.buttons.map(b => !!(b && b.pressed));
       break;
     }
     state.throttleSet = throttleSet;
+    padAxis = !!(gx || gy);
 
     // priority: keys > touch stick > pad > mouse
     let joyOwnsPitch = false;
     if (kx || ky) { state.steerX = kx; state.steerY = ky; }
     else if (stickActive) { state.steerX = stickX; state.steerY = stickY; }
     else if (padAxis) { state.steerX = gx; state.steerY = gy; joyOwnsPitch = isJoystick; }
-    else if (!isTouch && mouse) { state.steerX = expo(mouse.nx); state.steerY = expo(-mouse.ny); }
+    else if (!isTouch && mouse) { state.steerX = axis(mouse.nx, 0.07); state.steerY = axis(-mouse.ny, 0.07); }
     else { state.steerX = 0; state.steerY = 0; }
     // invert-pitch setting: HOTAS sticks are already pull-to-climb, skip them
-    if (invertY && !joyOwnsPitch) state.steerY = -state.steerY;
+    if (opts.invertY && !joyOwnsPitch) state.steerY = -state.steerY;
 
-    state.roll = kr || gr || 0;
+    state.roll = Math.max(-1, Math.min(1, kr + gr));
     state.throttleAxis = kt || gt || 0;
 
     if (padTorp && !src.padTorpPrev) src.torpEdge = true;
@@ -192,5 +258,7 @@ export function createInput(canvas) {
     if (m && m.boost !== undefined) src.kbBoost = !!m.boost;
     if (m && m.torp) src.torpEdge = true; }
 
-  return { state, update, resetEdges, clearAll, touchBtn, setMock, setOptions };
+  return { state, update, resetEdges, clearAll, touchBtn, setMock, setOptions,
+    setBinds, getBinds, resetBinds, assignBinding, captureNext, cancelCapture,
+    get capturing() { return !!capture; } };
 }

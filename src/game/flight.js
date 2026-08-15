@@ -19,8 +19,9 @@ export function createFlight(ship, input, audio) {
   let pitchRate = 0, yawRate = 0, rollRate = 0;
   let camRollUp = new THREE.Vector3(0, 1, 0);
   let fovKick = 0;
-  // settings (main.js pushes these): rate multiplier, assists, camera roll share
-  const opts = { sensitivity: 1, autoLevel: true, camBank: 0.5 };
+  // settings (main.js pushes these): rate multiplier, assists, camera roll share,
+  // throttle ramp speed
+  const opts = { sensitivity: 1, autoLevel: true, camBank: 0.5, throttleResp: 1 };
   function setOptions(o) { Object.assign(opts, o); }
 
   const F = new THREE.Vector3(), R = new THREE.Vector3(), U = new THREE.Vector3();
@@ -61,9 +62,9 @@ export function createFlight(ship, input, audio) {
     // ---- throttle & speed ----
     if (s.throttleSet != null) {
       // HOTAS slider: absolute, lightly smoothed
-      state.throttle += (THREE.MathUtils.clamp(s.throttleSet, 0, 1) - state.throttle) * Math.min(1, 12 * dt);
+      state.throttle += (THREE.MathUtils.clamp(s.throttleSet, 0, 1) - state.throttle) * Math.min(1, 12 * opts.throttleResp * dt);
     } else {
-      state.throttle = THREE.MathUtils.clamp(state.throttle + s.throttleAxis * 0.55 * dt, 0, 1);
+      state.throttle = THREE.MathUtils.clamp(state.throttle + s.throttleAxis * 0.55 * opts.throttleResp * dt, 0, 1);
     }
     state.boosting = s.boost && state.energy > 0;
     if (state.boosting) state.energy = Math.max(0, state.energy - 30 * dt);
