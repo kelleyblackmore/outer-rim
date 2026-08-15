@@ -8,6 +8,9 @@ const DEFAULT_BINDS = {
     rollLeft: ['a', 'q'], rollRight: ['d', 'e'] },
   pad:  { fire: [0, 7], torpedo: [2, 3], boost: [6, 1], thrUp: [12], thrDn: [13], rollLeft: [4], rollRight: [5] },
   joy:  { fire: [0], torpedo: [1], boost: [2, 3], thrUp: [], thrDn: [], rollLeft: [], rollRight: [] },
+  // {padId, axis, sf} — which device axis is the throttle lever and which way
+  // is forward. null = the classic HOTAS slider default (primary stick axis 3).
+  throttleAxis: null,
 };
 const clone = o => JSON.parse(JSON.stringify(o));
 
@@ -53,9 +56,13 @@ export function createInput(canvas) {
       if (!b[dev]) continue;
       for (const a of BINDABLE_ACTIONS) if (Array.isArray(b[dev][a])) binds[dev][a] = b[dev][a].slice();
     }
+    if ('throttleAxis' in b) binds.throttleAxis = b.throttleAxis ? { ...b.throttleAxis } : null;
   }
   function getBinds() { return clone(binds); }
   function resetBinds() { binds = clone(DEFAULT_BINDS); }
+  function assignThrottleAxis(t) {
+    binds.throttleAxis = t ? { padId: t.padId || '', axis: t.axis ?? t.id, sf: t.sf || -1 } : null;
+  }
   // rebind: the control replaces the action's list and leaves every other action
   function assignBinding(action, target) {
     const map = binds[target.dev];
@@ -66,10 +73,44 @@ export function createInput(canvas) {
   }
 
   // ---------- live capture (mapping mode) ----------
-  let capture = null;          // cb({dev,id,label} | {cancel:true})
-  function captureNext(cb) { capture = cb; }
-  function cancelCapture() { capture = null; }
-  const keyLabel = k => k === ' ' ? 'SPACE' : k.length === 1 ? k.toUpperCase() : k.toUpperCase();
+  // cb({dev:'keys'|'pad'|'joy', id, label} | {dev:'axis', axis, sf, padId, label} | {cancel:true})
+  let capture = null;
+  let axisBase = null, axisCand = null;
+  function captureNext(cb, o) {
+    capture = { cb, wantAxes: !!(o && o.axes) };
+    axisBase = null; axisCand = null;
+  }
+  function cancelCapture() { capture = null; axisBase = null; axisCand = null; }
+  const keyLabel = k => k === ' ' ? 'SPACE' : k.toUpperCase();
+
+  // axis capture: baseline every device's axes, then wait for one axis to hold
+  // a big deviation — that axis is the throttle, its push direction = forward
+  function scanAxisCapture(connected, primary) {
+    if (!axisBase) {
+      axisBase = {};
+      for (const p of connected) axisBase[p.index] = p.axes.slice();
+      return;
+    }
+    for (const p of connected) {
+      const base = axisBase[p.index] || (axisBase[p.index] = p.axes.slice());
+      for (let i = 0; i < p.axes.length; i++) {
+        if (p === primary && i < 3) continue;          // stick X/Y/twist keep steering
+        if (!Number.isFinite(p.axes[i])) continue;
+        const d = p.axes[i] - base[i];
+        if (Math.abs(d) > 0.45) {
+          if (axisCand && axisCand.pad === p.index && axisCand.axis === i) {
+            if (++axisCand.n >= 10) {                  // ~1/6s of sustained push
+              const cb = capture.cb;
+              capture = null; axisBase = null; axisCand = null;
+              cb({ dev: 'axis', axis: i, id: i, sf: Math.sign(d), padId: p.id,
+                label: `AXIS ${i}${p.id ? ' · ' + p.id.slice(0, 18) : ''}` });
+            }
+          } else axisCand = { pad: p.index, axis: i, n: 1 };
+          return;
+        }
+      }
+    }
+  }
 
   // ---------- keyboard ----------
   addEventListener('keydown', e => {
@@ -78,7 +119,7 @@ export function createInput(canvas) {
     if (e.repeat) return;
     if (capture) {
       e.preventDefault();
-      const cb = capture; capture = null;
+      const cb = capture.cb; capture = null; axisBase = null; axisCand = null;
       cb(k === 'escape' ? { cancel: true } : { dev: 'keys', id: k, label: keyLabel(k) });
       return;
     }
@@ -160,7 +201,7 @@ export function createInput(canvas) {
   };
 
   // ---------- per-frame combine ----------
-  let prevButtons = [];
+  const prevButtonsByPad = {};
   function update() {
     // keyboard axes (arrows steer; the rest through bindings)
     let kx = 0, ky = 0, kr = 0, kt = 0;
@@ -173,53 +214,72 @@ export function createInput(canvas) {
     if (anyDown(binds.keys.thrUp) || keys['__thrUp']) kt += 1;
     if (anyDown(binds.keys.thrDn) || keys['__thrDn']) kt -= 1;
 
-    // gamepad OR flight stick (HOTAS). Standard-mapped pads use thumbstick
-    // conventions; anything else with 3+ axes is treated as a joystick:
-    // X = turn, Y = pull-back-to-climb, twist = roll, slider = absolute throttle.
+    // gamepads: the FIRST flight stick (non-standard mapping) steers; buttons
+    // and the throttle axis are read across EVERY connected device, so a
+    // separate throttle quadrant works. Standard pads use thumbstick
+    // conventions; joysticks are X = turn, Y = pull-back-to-climb, twist = roll.
     let gx = 0, gy = 0, gr = 0, padAxis = false, padFire = false, padBoost = false, padTorp = false, gt = 0;
     let throttleSet = null, isJoystick = false;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) {
-      if (!p || !p.connected) continue;
-      isJoystick = p.mapping !== 'standard';
-      const bmap = isJoystick ? binds.joy : binds.pad;
+    const connected = [];
+    for (const p of pads) if (p && p.connected) connected.push(p);
+    let primary = connected.find(p => p.mapping !== 'standard') || connected[0] || null;
 
-      // capture: report the first rising-edge button, and swallow it
-      if (capture) {
+    // capture: first rising-edge button on ANY device; axes when requested
+    if (capture) {
+      outer: for (const p of connected) {
+        const prev = prevButtonsByPad[p.index] || [];
         for (let i = 0; i < p.buttons.length; i++) {
-          const pressed = !!(p.buttons[i] && p.buttons[i].pressed);
-          if (pressed && !prevButtons[i]) {
-            const cb = capture; capture = null;
-            cb({ dev: isJoystick ? 'joy' : 'pad', id: i, label: 'BTN ' + i });
-            break;
+          if (p.buttons[i] && p.buttons[i].pressed && !prev[i]) {
+            const cb = capture.cb; capture = null; axisBase = null; axisCand = null;
+            cb({ dev: p.mapping === 'standard' ? 'pad' : 'joy', id: i, label: 'BTN ' + i, padId: p.id });
+            break outer;
           }
         }
       }
-      const capturing = !!capture;
+      if (capture && capture.wantAxes) scanAxisCapture(connected, primary);
+    }
+    const capturing = !!capture;
 
-      if (isJoystick) {
-        gx = axis(p.axes[0], opts.deadzone);
-        gy = axis(p.axes[1], opts.deadzone);                      // pull back (+) = climb
-        gr = p.axes.length > 2 ? axis(p.axes[2], opts.deadzone + 0.08) : 0;   // twist drifts more
-        if (p.axes.length > 3 && Number.isFinite(p.axes[3])) {
-          throttleSet = (1 - p.axes[3]) / 2;                      // slider forward = full
-        }
-      } else {
-        gx = axis(p.axes[0], opts.deadzone);
-        gy = -axis(p.axes[1], opts.deadzone);                     // stick up = climb
-        gr = p.axes.length > 2 ? axis(p.axes[2], opts.deadzone) : 0;
-      }
+    for (const p of connected) {
+      const bmap = p.mapping === 'standard' ? binds.pad : binds.joy;
       if (!capturing) {
-        padFire = anyBtn(p, bmap.fire);
-        padBoost = anyBtn(p, bmap.boost);
-        padTorp = anyBtn(p, bmap.torpedo);
+        if (anyBtn(p, bmap.fire)) padFire = true;
+        if (anyBtn(p, bmap.boost)) padBoost = true;
+        if (anyBtn(p, bmap.torpedo)) padTorp = true;
         if (anyBtn(p, bmap.thrUp)) gt += 1;
         if (anyBtn(p, bmap.thrDn)) gt -= 1;
         if (anyBtn(p, bmap.rollLeft)) gr -= 1;
         if (anyBtn(p, bmap.rollRight)) gr += 1;
       }
-      prevButtons = p.buttons.map(b => !!(b && b.pressed));
-      break;
+      prevButtonsByPad[p.index] = p.buttons.map(b => !!(b && b.pressed));
+    }
+
+    if (primary) {
+      isJoystick = primary.mapping !== 'standard';
+      if (isJoystick) {
+        gx = axis(primary.axes[0], opts.deadzone);
+        gy = axis(primary.axes[1], opts.deadzone);                // pull back (+) = climb
+        gr += primary.axes.length > 2 ? axis(primary.axes[2], opts.deadzone + 0.08) : 0;
+      } else {
+        gx = axis(primary.axes[0], opts.deadzone);
+        gy = -axis(primary.axes[1], opts.deadzone);               // stick up = climb
+        gr += primary.axes.length > 2 ? axis(primary.axes[2], opts.deadzone) : 0;
+      }
+    }
+
+    // throttle lever: an explicit mapped axis wins; otherwise the classic
+    // HOTAS slider default (primary stick axis 3, forward = -1)
+    if (binds.throttleAxis) {
+      const b = binds.throttleAxis;
+      const tp = connected.find(p => p.id === b.padId) || primary;
+      if (tp && tp.axes.length > b.axis && Number.isFinite(tp.axes[b.axis])) {
+        let v = (1 + b.sf * tp.axes[b.axis]) / 2;
+        if (v < 0.03) v = 0; else if (v > 0.97) v = 1;
+        throttleSet = Math.min(1, Math.max(0, v));
+      }
+    } else if (primary && isJoystick && primary.axes.length > 3 && Number.isFinite(primary.axes[3])) {
+      throttleSet = (1 - primary.axes[3]) / 2;
     }
     state.throttleSet = throttleSet;
     padAxis = !!(gx || gy);
@@ -259,6 +319,6 @@ export function createInput(canvas) {
     if (m && m.torp) src.torpEdge = true; }
 
   return { state, update, resetEdges, clearAll, touchBtn, setMock, setOptions,
-    setBinds, getBinds, resetBinds, assignBinding, captureNext, cancelCapture,
+    setBinds, getBinds, resetBinds, assignBinding, assignThrottleAxis, captureNext, cancelCapture,
     get capturing() { return !!capture; } };
 }

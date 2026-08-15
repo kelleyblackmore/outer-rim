@@ -147,6 +147,7 @@ $('binds-reset').addEventListener('click', () => {
 
 // ---------------- live control mapping (map buttons while flying) ----------------
 const MAP_ACTIONS = [
+  ['__thraxis', 'THROTTLE LEVER', 'axis'],
   ['fire', 'FIRE LASERS'], ['torpedo', 'FIRE TORPEDO'], ['boost', 'BOOST'],
   ['thrUp', 'THROTTLE UP'], ['thrDn', 'THROTTLE DOWN'],
   ['rollLeft', 'ROLL LEFT'], ['rollRight', 'ROLL RIGHT'],
@@ -166,18 +167,24 @@ function startMapper() {
 function nextCapture() {
   if (!mapperOn) return;
   if (mapIdx >= MAP_ACTIONS.length) return endMapper(true);
-  const [, label] = MAP_ACTIONS[mapIdx];
+  const [id, label, kind] = MAP_ACTIONS[mapIdx];
   $('map-current').textContent = label;
+  document.querySelector('#mapper .map-action').textContent =
+    kind === 'axis' ? 'PUSH YOUR THROTTLE FULL FORWARD · ESC IF YOU HAVE NONE' : 'PRESS A KEY OR BUTTON FOR';
   input.captureNext(res => {
     if (!mapperOn) return;
-    if (!res.cancel) {
-      input.assignBinding(MAP_ACTIONS[mapIdx][0], res);
-      saveBinds();
-      $('map-bound').textContent = label + '  →  ' + res.label;
+    if (res.cancel) { mapIdx++; setTimeout(nextCapture, 250); return; }
+    if (kind === 'axis') {
+      if (res.dev !== 'axis') { nextCapture(); return; }   // stray button — re-arm and keep waiting
+      input.assignThrottleAxis(res);
+    } else {
+      input.assignBinding(id, res);
     }
+    saveBinds();
+    $('map-bound').textContent = label + '  →  ' + res.label;
     mapIdx++;
     setTimeout(nextCapture, 500);
-  });
+  }, { axes: kind === 'axis' });
 }
 function endMapper(finished) {
   mapperOn = false;
@@ -402,7 +409,8 @@ function frame(now) {
     if (W > 0 && H > 0 && !engine.lost) {
       if (state === 'playing') {
         input.update();
-        if (input.state.pausePressed) { togglePause(); input.resetEdges(); }
+        // while the mapper is walking actions, Esc means "skip", never "pause"
+        if (input.state.pausePressed && !mapperOn) { togglePause(); input.resetEdges(); }
         else {
           playTick(dt);
           input.resetEdges();
