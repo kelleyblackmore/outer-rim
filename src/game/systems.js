@@ -446,11 +446,11 @@ export function createSystems(ctx) {
         fireEnemyLaser(e.grp.position);
       }
 
-      // ram / collision with the player
+      // ram / collision with the player — the TIE dies and it COUNTS as a
+      // kill (otherwise a rammed raider soft-locks its clear phase)
       if (dist < 4.5) {
         hurtPlayer(20);
-        explode(e.grp.position, false); audio.explosion(false);
-        e.active = false; e.grp.visible = false;
+        killTarget(e);
       }
     }
   }

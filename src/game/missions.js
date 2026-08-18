@@ -388,6 +388,11 @@ export function createMissionRunner(ctx) {
         if (toSpawn > 0 && systems.aliveCount('tie') === 0) {
           toSpawn -= systems.spawnTies(Math.min(waveSize, toSpawn));
           onBanner('NEXT WAVE INBOUND', true);
+        } else if (toSpawn <= 0 && killTally < phase.count && systems.aliveCount('tie') === 0) {
+          // belt-and-suspenders: if a raider was ever lost without credit,
+          // replacements launch instead of the phase soft-locking
+          systems.spawnTies(phase.count - killTally);
+          onBanner('REINFORCEMENTS INBOUND', true);
         }
         if (toSpawn <= 0 && killTally >= phase.count) nextPhase();
       } else if (killTally >= phase.count) {
