@@ -143,7 +143,14 @@ applySettings();
 // ---------------- control bindings ----------------
 try {
   const saved = JSON.parse(localStorage.getItem(LS_PREFIX + 'bind') || 'null');
-  if (saved) input.setBinds(saved);
+  if (saved) {
+    // saved binds from before X joined the auto-land defaults: upgrade in place
+    if (saved.keys && Array.isArray(saved.keys.autoland)
+        && saved.keys.autoland.length === 1 && saved.keys.autoland[0] === 'g') {
+      saved.keys.autoland = ['g', 'x'];
+    }
+    input.setBinds(saved);
+  }
 } catch (e) { /* corrupted save — defaults stand */ }
 function saveBinds() { localStorage.setItem(LS_PREFIX + 'bind', JSON.stringify(input.getBinds())); }
 $('binds-reset').addEventListener('click', () => {

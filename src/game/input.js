@@ -5,7 +5,7 @@ export const BINDABLE_ACTIONS = ['fire', 'torpedo', 'boost', 'thrUp', 'thrDn', '
 
 const DEFAULT_BINDS = {
   keys: { fire: [' ', 'l'], torpedo: ['f'], boost: ['shift'], thrUp: ['w'], thrDn: ['s'],
-    rollLeft: ['a', 'q'], rollRight: ['d', 'e'], autoland: ['g'] },
+    rollLeft: ['a', 'q'], rollRight: ['d', 'e'], autoland: ['g', 'x'] },
   pad:  { fire: [0, 7], torpedo: [2, 3], boost: [6, 1], thrUp: [12], thrDn: [13], rollLeft: [4], rollRight: [5], autoland: [9] },
   joy:  { fire: [0], torpedo: [1], boost: [2, 3], thrUp: [], thrDn: [], rollLeft: [], rollRight: [], autoland: [5] },
   // {padId, axis, sf} — which device axis is the throttle lever and which way

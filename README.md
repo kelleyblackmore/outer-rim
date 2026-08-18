@@ -26,7 +26,7 @@ same engine philosophy, but free flight instead of rails.
 - **Q / E** (or **A / D**) — spin/roll · **W / S** — throttle · **Shift** — boost
 - **Space / click / L** — quad lasers
 - **F / right-click** — proton torpedo (hold an enemy in the reticle to lock)
-- **G** (or the on-screen button) — auto-land when a docking bay is marked;
+- **G / X** (or the on-screen button) — auto-land when a docking bay is marked;
   hard stick input takes control back. Touch down manually by approaching a bay
   slow and shallow; throttle up to lift off again.
 - **P / Esc** — pause
