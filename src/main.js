@@ -141,7 +141,9 @@ for (const k of SLIDER_KEYS) {
 applySettings();
 
 // ---------------- pilot profile (RPG) ----------------
-const RANKS = ['CADET', 'ENSIGN', 'LIEUTENANT', 'COMMANDER', 'CAPTAIN', 'WING COMMANDER', 'ACE', 'LEGEND'];
+// Rebel Starfighter Corps ladder, topping out at the legendary callsigns
+const RANKS = ['FLIGHT CADET', 'FLIGHT OFFICER', 'LIEUTENANT', 'CAPTAIN', 'COMMANDER',
+  'WING COMMANDER', 'RED LEADER', 'ROGUE LEADER'];
 const XP_T = [0, 800, 2000, 4000, 7000, 11000, 16000, 22000];
 let pilot = { xp: 0, credits: 0, kills: 0, wins: {}, owned: [] };
 try {
@@ -154,8 +156,23 @@ const rankOf = xp => RANKS[Math.min(levelOf(xp), RANKS.length - 1)];
 function refreshPilotLine() {
   const l = levelOf(pilot.xp);
   const next = XP_T[l + 1];
-  $('pilot-line').textContent = `${rankOf(pilot.xp)} · LVL ${l + 1} · ${pilot.xp} XP` +
-    (next !== undefined ? `  (${next - pilot.xp} TO NEXT)` : '') + `  ·  ⬡ ${pilot.credits}`;
+  // rank plaque: one tile per level, red row first — the classic officer badge
+  const badge = $('pc-badge');
+  badge.innerHTML = '';
+  for (let i = 0; i <= l; i++) {
+    const tile = document.createElement('i');
+    tile.className = i < Math.ceil((l + 1) / 2) ? 'r' : 'b';
+    badge.appendChild(tile);
+  }
+  $('pc-rank').textContent = rankOf(pilot.xp);
+  $('pc-lvl').textContent = `LVL ${l + 1}`;
+  $('pc-cred').textContent = `⬡ ${pilot.credits}`;
+  const span = next !== undefined ? next - XP_T[l] : 1;
+  const into = next !== undefined ? pilot.xp - XP_T[l] : 1;
+  $('pc-xpfill').style.transform = `scaleX(${Math.min(1, into / span)})`;
+  $('pc-xptext').textContent = next !== undefined
+    ? `${pilot.xp} XP  ·  ${next - pilot.xp} TO ${RANKS[Math.min(l + 1, RANKS.length - 1)]}`
+    : `${pilot.xp} XP  ·  HIGHEST HONOR`;
 }
 
 // parts that must be bought with mission credits
@@ -253,9 +270,11 @@ document.querySelectorAll('#shipyard .seg [data-val]').forEach(b => b.addEventLi
       pilot.owned.push(costKey);
       savePilot();
       refreshPilotLine();
+      audio.buy();
     } else {
       b.classList.add('deny');
       setTimeout(() => b.classList.remove('deny'), 420);
+      audio.deny();
       return;
     }
   }
@@ -424,7 +443,10 @@ function finish(won, failMsg) {
   $('r-award').textContent = `+${gainedXp} XP  ·  +⬡${gainedCr}${firstWin ? '  (FIRST CLEAR +200)' : ''}`;
   const promoted = levelOf(pilot.xp) > lvlBefore;
   $('r-promote').classList.toggle('hidden', !promoted);
-  if (promoted) $('r-promote').textContent = '▲ PROMOTED — ' + rankOf(pilot.xp);
+  if (promoted) {
+    $('r-promote').textContent = '▲ PROMOTED — ' + rankOf(pilot.xp);
+    setTimeout(() => { if (state === 'result') audio.promote(); }, 1100);
+  }
 
   const title = $('result-title');
   title.textContent = won ? (def.winTitle || 'SECTOR CLEAR') : (failMsg ? 'MISSION FAILED' : 'X-WING DOWN');
@@ -505,6 +527,15 @@ $('thr-up').addEventListener('touchstart', e => { e.preventDefault(); input.touc
 $('thr-up').addEventListener('touchend', () => input.touchBtn.thrUpUp());
 $('thr-dn').addEventListener('touchstart', e => { e.preventDefault(); input.touchBtn.thrDnDown(); }, { passive: false });
 $('thr-dn').addEventListener('touchend', () => input.touchBtn.thrDnUp());
+
+// every interactive control gives a soft UI blip (the click is also the
+// user gesture that unlocks the AudioContext)
+document.addEventListener('click', e => {
+  if (e.target.closest('.btn, .mcard, .diff, .swatch, .ubtn, .tbtn, #autoland-btn')) {
+    audio.init();
+    audio.ui();
+  }
+});
 
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'playing') togglePause(true); });
 window.addEventListener('blur', () => { if (state === 'playing') togglePause(true); });
@@ -587,7 +618,10 @@ function toggleAutoLand() {
 $('autoland-btn').addEventListener('click', () => { audio.init(); toggleAutoLand(); });
 
 let warp = 0;
+let prevBoosting = false;
 function playTick(dt) {
+  if (flight.state.boosting && !prevBoosting) audio.boost();
+  prevBoosting = flight.state.boosting;
   systems.update(dt);            // includes flight.update
   runner.update(dt);
   world.update(dt);

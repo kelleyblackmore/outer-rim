@@ -98,7 +98,20 @@
         <div class="crawl">A LONG TIME AGO IN A GALAXY FAR, FAR AWAY…</div>
         <h1 class="logo">OUTER RIM<span>PATROL</span></h1>
         <p class="tagline">X-WING FREE FLIGHT</p>
-        <div id="pilot-line" class="pilot-line"></div>
+        <div id="pilot-card" class="pilot-card" aria-label="Pilot record">
+          <svg class="starbird" viewBox="0 0 100 100" aria-hidden="true">
+            <path d="M50 6 L58 28 C74 30 86 44 88 62 C78 52 68 48 61 48 L65 94 L50 76 L35 94 L39 48 C32 48 22 52 12 62 C14 44 26 30 42 28 Z"/>
+          </svg>
+          <div class="pc-mid">
+            <div class="pc-rank-row">
+              <span id="pc-badge" class="rank-badge"></span>
+              <span id="pc-rank" class="pc-rank">FLIGHT CADET</span>
+            </div>
+            <div class="pc-sub"><span id="pc-lvl">LVL 1</span><span id="pc-cred">⬡ 0</span></div>
+            <div class="pc-xpbar"><i id="pc-xpfill"></i></div>
+            <div id="pc-xptext" class="pc-xptext">0 XP</div>
+          </div>
+        </div>
         <p class="brief">Pick a patrol sector. Full flight control — climb, dive, roll, throttle. Clear the objectives and bring your fighter home.</p>
         <div id="missions" class="missions" role="group" aria-label="Missions">
           <button class="mcard" data-mission="belt">

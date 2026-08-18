@@ -223,7 +223,7 @@ export function createFlight(ship, input, audio) {
           ship.position.y = pad.y + 2.1;
           state.speed = 0; state.throttle = 0;
           pitchRate = yawRate = rollRate = 0;
-          audio.scrape();
+          if (audio.land) audio.land(); else audio.scrape();
           return;
         }
         ship.position.y = floor + 2.4;
