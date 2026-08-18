@@ -82,7 +82,7 @@ function refreshBests() {
 refreshBests();
 
 // ---------------- player settings ----------------
-const SETTING_DEFAULTS = { invertY: 'off', autoLevel: 'off', camBank: 'full',
+const SETTING_DEFAULTS = { invertY: 'off', autoLevel: 'off', camBank: 'full', dust: 'subtle',
   sensitivity: 100, throttleResp: 100, deadzone: 15, curve: 55 };
 // one-time migration: auto-level used to default ON — clear stale saves so the
 // new manual-flight default actually lands
@@ -114,6 +114,7 @@ function applySettings() {
     autoLevel: settings.autoLevel !== 'off',
     camBank: settings.camBank === 'reduced' ? 0.15 : 0.5,
   });
+  systems.setDustLevel(settings.dust === 'full' ? 1 : settings.dust === 'off' ? 0 : 0.55);
   document.querySelectorAll('.seg').forEach(seg => {
     const key = seg.dataset.set;
     seg.querySelectorAll('[data-val]').forEach(b => b.classList.toggle('sel', b.dataset.val === settings[key]));

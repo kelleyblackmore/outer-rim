@@ -166,18 +166,21 @@ export function createSystems(ctx) {
   }
 
   // speed dust — near-field particles streaming past the ship
-  const DUST_N = 160;
+  const DUST_N = 90;
   const dustGeo = new THREE.BufferGeometry();
   dustGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(DUST_N * 3), 3));
-  const dustMat = new THREE.PointsMaterial({ color: 0xcfe4ff, size: 0.5, sizeAttenuation: true,
+  const dustMat = new THREE.PointsMaterial({ color: 0xcfe4ff, size: 0.38, sizeAttenuation: true,
     transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
   const dust = new THREE.Points(dustGeo, dustMat);
   dust.frustumCulled = false;
   scene.add(dust);
   let dustSeeded = false;
+  let dustLevel = 0.55;        // settings: 1 full · 0.55 subtle · 0 off
+  function setDustLevel(v) { dustLevel = v; }
   function updateDust(dt) {
+    if (dustLevel <= 0) { dustMat.opacity = 0; dustSeeded = false; return; }
     const speed = flight.state.speed;
-    const target = THREE.MathUtils.clamp((speed - 55) / 120, 0, 0.5) + (flight.state.boosting ? 0.2 : 0);
+    const target = (THREE.MathUtils.clamp((speed - 72) / 130, 0, 0.32) + (flight.state.boosting ? 0.16 : 0)) * dustLevel;
     dustMat.opacity += (target - dustMat.opacity) * Math.min(1, 4 * dt);
     if (dustMat.opacity < 0.02) { dustSeeded = false; return; }
     flight.forward(_fwd);
@@ -918,6 +921,7 @@ export function createSystems(ctx) {
   return {
     run, reset, update, setWorld, setOnKill, hudSnapshot, hurtPlayer,
     spawnTies, spawnProbes, spawnTurrets, spawnGenerators, spawnPort, spawnOscillator, setShielded, setTurretsSilent,
+    setDustLevel,
     clearHostiles, aliveCount,
     explode, ties, probes, turrets, generators, ports, oscillators, pLasers, eLasers, torpPool: torps,
   };
