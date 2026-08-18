@@ -369,6 +369,108 @@ function refitAWing(g, cfg, mats) {
   g.userData.trails = trails;
 }
 
+// ---------------- B-WING (A/SF-01 assault gunship) ----------------
+function refitBWing(g, cfg, mats) {
+  const { hullMat, stripeMat, glowMatEngine, glowCol } = mats;
+
+  // the long primary airfoil, flown blade-vertical, cockpit at the top
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.7, 0.62), hullMat);
+  blade.position.set(0, -0.25, 0.15);
+  g.add(blade);
+  const bladeEdge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.7, 0.2), M.hullDk);
+  bladeEdge.position.set(0, -0.25, -0.24);
+  g.add(bladeEdge);
+  const bladeStripe = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.5, 0.64), stripeMat);
+  bladeStripe.position.set(0, -0.9, 0.15);
+  g.add(bladeStripe);
+
+  // gyro-stabilized cockpit pod up top
+  const pod = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), hullMat);
+  pod.scale.set(0.85, 0.9, 1.25);
+  pod.position.set(0, 1.35, -0.05);
+  g.add(pod);
+  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.glass);
+  visor.rotation.x = -Math.PI / 2.4;
+  visor.scale.set(0.9, 0.8, 1);
+  visor.position.set(0, 1.4, -0.36);
+  g.add(visor);
+  const podRing = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.05, 8, 14), stripeMat);
+  podRing.rotation.x = Math.PI / 2;
+  podRing.position.set(0, 1.06, -0.05);
+  g.add(podRing);
+
+  // mid-body engine cluster
+  const cluster = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.72, 1.0), M.hullDk);
+  cluster.position.set(0, 0.35, 0.55);
+  g.add(cluster);
+  for (const s of [-1, 1]) {
+    const grb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.7), M.panel);
+    grb.position.set(s * 0.44, 0.35, 0.5);
+    g.add(grb);
+  }
+
+  const engineNodes = [], trails = [], wingCannons = [];
+  const trailGeo = new THREE.ConeGeometry(0.16, 1, 8, 1, true);
+  trailGeo.rotateX(Math.PI / 2);
+  trailGeo.translate(0, 0, 0.5);
+  // twin main thrusters on the cluster
+  for (const s of [-1, 1]) {
+    const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.6, 10), M.hullDk);
+    eng.rotation.x = Math.PI / 2;
+    eng.position.set(s * 0.2, 0.35, 1.2);
+    g.add(eng);
+    const gl = new THREE.Mesh(new THREE.CircleGeometry(0.16, 14), glowMatEngine());
+    gl.position.set(s * 0.2, 0.35, 1.52);
+    gl.rotation.y = Math.PI;
+    g.add(gl); engineNodes.push(gl);
+    const tr = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({
+      color: glowCol, transparent: true, opacity: 0.55, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    tr.position.set(s * 0.2, 0.35, 1.56);
+    tr.scale.z = 1.7;
+    g.add(tr); trails.push(tr);
+  }
+
+  // crossed S-foils off the cluster, each with a tip cannon
+  for (const s of [-1, 1]) {
+    const foil = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.07, 0.5), hullMat);
+    foil.position.set(s * 1.05, 0.42, 0.45);
+    foil.rotation.z = s * 0.18;
+    g.add(foil);
+    const foilStripe = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.14), stripeMat);
+    foilStripe.position.set(s * 1.2, 0.45 + s * 0, 0.28);
+    foilStripe.rotation.z = s * 0.18;
+    g.add(foilStripe);
+    const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.0, 8), M.tieDk);
+    gun.rotation.x = Math.PI / 2;
+    gun.position.set(s * 1.72, 0.55, 0.05);
+    g.add(gun);
+    const muzzle = new THREE.Object3D();
+    muzzle.position.set(s * 1.72, 0.55, -0.5);
+    g.add(muzzle);
+    wingCannons.push(muzzle);
+  }
+
+  // heavy gun cluster at the blade tip
+  const tipPod = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.5, 0.7), M.hullDk);
+  tipPod.position.set(0, -1.75, 0.05);
+  g.add(tipPod);
+  for (const s of [-1, 1]) {
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 1.2, 8), M.tieDk);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(s * 0.12, -1.75, -0.6);
+    g.add(barrel);
+  }
+  const tipMuzzle = new THREE.Object3D();
+  tipMuzzle.position.set(0, -1.75, -1.25);
+  g.add(tipMuzzle);
+  wingCannons.push(tipMuzzle);
+
+  g.userData.engineNodes = engineNodes;
+  g.userData.wingCannons = wingCannons;
+  g.userData.trails = trails;
+}
+
 // ---------------- frame dispatcher ----------------
 export function refitShip(g, cfg = {}) {
   const frame = cfg.frame || 'xwing';
@@ -390,6 +492,7 @@ export function refitShip(g, cfg = {}) {
     glowCol,
   };
   if (frame === 'ywing') refitYWing(g, cfg, mats);
+  else if (frame === 'bwing') refitBWing(g, cfg, mats);
   else refitAWing(g, cfg, mats);
   return cast(g);
 }

@@ -160,7 +160,7 @@ function refreshPilotLine() {
 
 // parts that must be bought with mission credits
 const PART_COSTS = {
-  'frame:ywing': 800, 'frame:awing': 800,
+  'frame:ywing': 800, 'frame:awing': 800, 'frame:bwing': 1500,
   'engine:interceptor': 400, 'engine:heavy': 400,
   'shields:reinforced': 350, 'shields:recharger': 350,
   'cannons:twin': 450, 'cannons:rapid': 450,
@@ -173,6 +173,7 @@ const FRAMES = {
   xwing: { label: 'X-WING', speed: 1, agility: 1, shield: 1, boost: 0, torpMult: 1 },
   ywing: { label: 'Y-WING', speed: 0.88, agility: 0.85, shield: 1.3, boost: 40, torpMult: 2 },
   awing: { label: 'A-WING', speed: 1.18, agility: 1.15, shield: 0.8, boost: -10, torpMult: 0.5 },
+  bwing: { label: 'B-WING', speed: 0.82, agility: 0.8, shield: 1.45, boost: 20, torpMult: 1.5 },
 };
 const SHIP_PARTS = {
   engine: {
