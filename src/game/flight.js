@@ -28,7 +28,7 @@ export function createFlight(ship, input, audio) {
   const opts = { sensitivity: 1, autoLevel: true, camBank: 0.5, throttleResp: 1 };
   function setOptions(o) { Object.assign(opts, o); }
   // shipyard loadout: engine tuning
-  const stats = { speedMult: 1, boostMax: 100, boostDrain: 1 };
+  const stats = { speedMult: 1, boostMax: 100, boostDrain: 1, agility: 1 };
   function setShipStats(s) {
     Object.assign(stats, s);
     state.energyMax = stats.boostMax;
@@ -165,8 +165,8 @@ export function createFlight(ship, input, audio) {
     } else {
       // ---- rotation rates (smoothed toward demand) ----
       const k = 1 - Math.exp(-9 * dt);
-      pitchRate += (s.steerY * PITCH_MAX * opts.sensitivity - pitchRate) * k;
-      yawRate += (-s.steerX * TURN_MAX * opts.sensitivity - yawRate) * k;
+      pitchRate += (s.steerY * PITCH_MAX * opts.sensitivity * stats.agility - pitchRate) * k;
+      yawRate += (-s.steerX * TURN_MAX * opts.sensitivity * stats.agility - yawRate) * k;
 
       vectors();
       // auto-bank into turns / auto-level, unless the pilot is rolling manually

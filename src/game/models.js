@@ -210,11 +210,199 @@ export function refitXWing(g, cfg = {}) {
   return cast(g);
 }
 
-export function buildXWing(cfg) {
+// ---------------- Y-WING (BTL bomber) ----------------
+function refitYWing(g, cfg, mats) {
+  const { hullMat, stripeMat, glowMatEngine, glowCol } = mats;
+
+  // cockpit / nose section
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.42, 1.6), hullMat);
+  nose.position.set(0, 0, -1.55);
+  g.add(nose);
+  const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.24, 0.8, 8), M.hullDk);
+  tip.rotation.x = Math.PI / 2;
+  tip.position.set(0, 0, -2.7);
+  g.add(tip);
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.glass);
+  canopy.scale.set(1, 0.72, 1.4);
+  canopy.position.set(0, 0.2, -1.45);
+  g.add(canopy);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.44, 0.16), stripeMat);
+  band.position.set(0, 0, -2.15);
+  g.add(band);
+
+  // astromech
+  const r2 = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color(cfg.stripe || '#d23b2f'), metalness: 0.4, roughness: 0.5 }));
+  r2.position.set(0, 0.24, -0.62);
+  g.add(r2);
+
+  // exposed central spar (the stripped-down Y-wing look)
+  const spar = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.28, 2.4), M.panel);
+  spar.position.set(0, 0, 0.45);
+  g.add(spar);
+  for (let i = 0; i < 3; i++) {
+    const grb = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.34, 0.18), M.hullDk);
+    grb.position.set(0, 0, -0.3 + i * 0.75);
+    g.add(grb);
+  }
+  const cross = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.09, 0.55), hullMat);
+  cross.position.set(0, 0, 0.9);
+  g.add(cross);
+
+  const engineNodes = [], trails = [], wingCannons = [];
+  const trailGeo = new THREE.ConeGeometry(0.15, 1, 8, 1, true);
+  trailGeo.rotateX(Math.PI / 2);
+  trailGeo.translate(0, 0, 0.5);
+  // outboard engine nacelles
+  for (const s of [-1, 1]) {
+    const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 2.6, 10), M.hullDk);
+    nac.rotation.x = Math.PI / 2;
+    nac.position.set(s * 1.18, 0, 0.75);
+    g.add(nac);
+    const domeCap = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), hullMat);
+    domeCap.position.set(s * 1.18, 0, -0.6);
+    g.add(domeCap);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 8, 12), stripeMat);
+    ring.position.set(s * 1.18, 0, -0.42);
+    g.add(ring);
+    for (let i = 0; i < 2; i++) {
+      const grb = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.5), M.panel);
+      grb.position.set(s * 1.18, 0.16, 0.2 + i * 0.9);
+      g.add(grb);
+    }
+    const gl = new THREE.Mesh(new THREE.CircleGeometry(0.19, 14), glowMatEngine());
+    gl.position.set(s * 1.18, 0, 2.06);
+    gl.rotation.y = Math.PI;
+    g.add(gl); engineNodes.push(gl);
+    const tr = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({
+      color: glowCol, transparent: true, opacity: 0.55, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    tr.position.set(s * 1.18, 0, 2.1);
+    tr.scale.z = 1.6;
+    g.add(tr); trails.push(tr);
+    // twin nose cannons
+    const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.1, 8), M.tieDk);
+    gun.rotation.x = Math.PI / 2;
+    gun.position.set(s * 0.14, -0.1, -2.35);
+    g.add(gun);
+    const muzzle = new THREE.Object3D();
+    muzzle.position.set(s * 0.14, -0.1, -2.95);
+    g.add(muzzle);
+    wingCannons.push(muzzle);
+  }
+
+  g.userData.engineNodes = engineNodes;
+  g.userData.wingCannons = wingCannons;
+  g.userData.trails = trails;
+}
+
+// ---------------- A-WING (RZ-1 interceptor) ----------------
+function refitAWing(g, cfg, mats) {
+  const { hullMat, stripeMat, glowMatEngine, glowCol } = mats;
+
+  // wedge body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.3, 2.1), hullMat);
+  body.position.set(0, 0, 0.15);
+  g.add(body);
+  const noseGeo = new THREE.CylinderGeometry(0.06, 0.78, 1.7, 4);
+  const noseMesh = new THREE.Mesh(noseGeo, hullMat);
+  noseMesh.rotation.x = Math.PI / 2;
+  noseMesh.rotation.y = Math.PI / 4;
+  noseMesh.scale.set(1.35, 1, 0.26);
+  noseMesh.position.set(0, 0, -1.65);
+  g.add(noseMesh);
+
+  // canopy bubble
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.glass);
+  canopy.scale.set(0.85, 0.75, 1.5);
+  canopy.position.set(0, 0.16, -0.35);
+  g.add(canopy);
+
+  // the famous painted top stripes
+  for (const s of [-1, 1]) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 2.0), stripeMat);
+    stripe.position.set(s * 0.45, 0.165, 0.1);
+    g.add(stripe);
+  }
+  const noseStripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 1.1), stripeMat);
+  noseStripe.position.set(0, 0.13, -1.6);
+  g.add(noseStripe);
+
+  const engineNodes = [], trails = [], wingCannons = [];
+  const trailGeo = new THREE.ConeGeometry(0.14, 1, 8, 1, true);
+  trailGeo.rotateX(Math.PI / 2);
+  trailGeo.translate(0, 0, 0.5);
+  for (const s of [-1, 1]) {
+    // big twin engines
+    const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.9, 10), M.hullDk);
+    eng.rotation.x = Math.PI / 2;
+    eng.position.set(s * 0.5, 0, 1.25);
+    g.add(eng);
+    const gl = new THREE.Mesh(new THREE.CircleGeometry(0.21, 14), glowMatEngine());
+    gl.position.set(s * 0.5, 0, 1.72);
+    gl.rotation.y = Math.PI;
+    g.add(gl); engineNodes.push(gl);
+    const tr = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({
+      color: glowCol, transparent: true, opacity: 0.55, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    tr.position.set(s * 0.5, 0, 1.76);
+    tr.scale.z = 1.7;
+    g.add(tr); trails.push(tr);
+    // canted stabilizer fins
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.55), M.hullDk);
+    fin.position.set(s * 0.78, 0.34, 1.05);
+    fin.rotation.z = s * -0.3;
+    g.add(fin);
+    // side-mounted cannon pods
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.9, 8), M.tieDk);
+    pod.rotation.x = Math.PI / 2;
+    pod.position.set(s * 0.88, 0, -0.15);
+    g.add(pod);
+    const muzzle = new THREE.Object3D();
+    muzzle.position.set(s * 0.88, 0, -0.75);
+    g.add(muzzle);
+    wingCannons.push(muzzle);
+  }
+
+  g.userData.engineNodes = engineNodes;
+  g.userData.wingCannons = wingCannons;
+  g.userData.trails = trails;
+}
+
+// ---------------- frame dispatcher ----------------
+export function refitShip(g, cfg = {}) {
+  const frame = cfg.frame || 'xwing';
+  if (frame === 'xwing') return refitXWing(g, cfg);
+
+  // shared paint materials for the other frames
+  const stripeCol = new THREE.Color(cfg.stripe || '#d23b2f');
+  const glowCol = new THREE.Color(cfg.glow || '#59d4ff');
+  const hullTone = HULL_TONES[cfg.hull] || HULL_TONES.light;
+  while (g.children.length) {
+    const c = g.children[g.children.length - 1];
+    g.remove(c);
+    c.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  }
+  const mats = {
+    hullMat: new THREE.MeshStandardMaterial({ map: hullTex, color: hullTone, metalness: 0.55, roughness: 0.55 }),
+    stripeMat: new THREE.MeshStandardMaterial({ color: stripeCol, metalness: 0.3, roughness: 0.6 }),
+    glowMatEngine: () => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: glowCol, emissiveIntensity: 3.4, roughness: 0.4 }),
+    glowCol,
+  };
+  if (frame === 'ywing') refitYWing(g, cfg, mats);
+  else refitAWing(g, cfg, mats);
+  return cast(g);
+}
+
+export function buildShip(cfg) {
   const g = new THREE.Group();
-  refitXWing(g, cfg);
+  refitShip(g, cfg);
   g.scale.setScalar(0.62);
   return g;
+}
+
+export function buildXWing(cfg) {
+  return buildShip({ ...(cfg || {}), frame: 'xwing' });
 }
 
 // ---------------- TIE FIGHTER ----------------

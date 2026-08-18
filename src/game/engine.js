@@ -102,7 +102,9 @@ export function createEngine(canvas) {
   const renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
 
-  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.5, 0.62);
+  // threshold sits above the starfields so sub-pixel stars don't bloom into
+  // blocky half-res squares; emissive glows (3+) clear it easily
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.5, 0.85);
   composer.addPass(bloom);
 
   // radial warp blur — driven by boost via setWarp(); free when disabled

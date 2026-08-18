@@ -6,7 +6,7 @@ import { createHud } from './game/hud.js';
 import { createFlight } from './game/flight.js';
 import { createSystems } from './game/systems.js';
 import { buildWorld } from './game/world.js';
-import { buildXWing, refitXWing } from './game/models.js';
+import { buildShip, refitShip } from './game/models.js';
 import { MISSIONS, MISSION_ORDER, createMissionRunner } from './game/missions.js';
 
 const $ = id => document.getElementById(id);
@@ -30,7 +30,7 @@ const audio = createAudio();
 const input = createInput(sceneCanvas);
 const hud = createHud(hudCanvas);
 
-const ship = buildXWing();
+const ship = buildShip();
 engine.scene.add(ship);
 const flight = createFlight(ship, input, audio);
 
@@ -160,6 +160,7 @@ function refreshPilotLine() {
 
 // parts that must be bought with mission credits
 const PART_COSTS = {
+  'frame:ywing': 800, 'frame:awing': 800,
   'engine:interceptor': 400, 'engine:heavy': 400,
   'shields:reinforced': 350, 'shields:recharger': 350,
   'cannons:twin': 450, 'cannons:rapid': 450,
@@ -167,6 +168,12 @@ const PART_COSTS = {
 };
 
 // ---------------- shipyard ----------------
+// airframes multiply the fitted parts: speed & handling vs toughness & payload
+const FRAMES = {
+  xwing: { label: 'X-WING', speed: 1, agility: 1, shield: 1, boost: 0, torpMult: 1 },
+  ywing: { label: 'Y-WING', speed: 0.88, agility: 0.85, shield: 1.3, boost: 40, torpMult: 2 },
+  awing: { label: 'A-WING', speed: 1.18, agility: 1.15, shield: 0.8, boost: -10, torpMult: 0.5 },
+};
 const SHIP_PARTS = {
   engine: {
     balanced: { speedMult: 1, boostMax: 100, boostDrain: 1 },
@@ -189,7 +196,7 @@ const SHIP_PARTS = {
     seeker: { count: 4, turn: 5.2 },
   },
 };
-const SHIP_DEFAULT = { stripe: '#d23b2f', glow: '#59d4ff', hull: 'light',
+const SHIP_DEFAULT = { frame: 'xwing', stripe: '#d23b2f', glow: '#59d4ff', hull: 'light',
   engine: 'balanced', shields: 'standard', cannons: 'quad', torps: 'standard' };
 let shipCfg = { ...SHIP_DEFAULT };
 try {
@@ -197,20 +204,23 @@ try {
   if (saved) shipCfg = { ...SHIP_DEFAULT, ...saved };
 } catch (e) { /* defaults stand */ }
 // an equipped part the pilot doesn't own reverts to stock
-for (const key of ['engine', 'shields', 'cannons', 'torps']) {
+for (const key of ['frame', 'engine', 'shields', 'cannons', 'torps']) {
   const costKey = key + ':' + shipCfg[key];
   if (PART_COSTS[costKey] && !pilot.owned.includes(costKey)) shipCfg[key] = SHIP_DEFAULT[key];
 }
 
 function applyShip() {
-  refitXWing(ship, shipCfg);
+  refitShip(ship, shipCfg);
+  const fr = FRAMES[shipCfg.frame] || FRAMES.xwing;
   const en = SHIP_PARTS.engine[shipCfg.engine] || SHIP_PARTS.engine.balanced;
   const sh = SHIP_PARTS.shields[shipCfg.shields] || SHIP_PARTS.shields.standard;
   const cn = SHIP_PARTS.cannons[shipCfg.cannons] || SHIP_PARTS.cannons.quad;
   const tp = SHIP_PARTS.torps[shipCfg.torps] || SHIP_PARTS.torps.standard;
-  flight.setShipStats({ speedMult: en.speedMult, boostMax: en.boostMax, boostDrain: en.boostDrain });
-  systems.setShipStats({ laserDmg: cn.dmg, laserCd: cn.cd, torpCount: tp.count, torpTurn: tp.turn,
-    shieldCap: sh.cap, shieldRegen: sh.regen });
+  flight.setShipStats({ speedMult: en.speedMult * fr.speed, boostMax: Math.max(50, en.boostMax + fr.boost),
+    boostDrain: en.boostDrain, agility: fr.agility });
+  systems.setShipStats({ laserDmg: cn.dmg, laserCd: cn.cd,
+    torpCount: Math.max(2, Math.round(tp.count * fr.torpMult)), torpTurn: tp.turn,
+    shieldCap: Math.round(sh.cap * fr.shield), shieldRegen: sh.regen });
   document.querySelectorAll('#shipyard .seg').forEach(seg => {
     const key = seg.dataset.ship;
     seg.querySelectorAll('[data-val]').forEach(b => {
@@ -226,8 +236,10 @@ function applyShip() {
     });
   });
   $('ship-stats').textContent =
-    `⬡ ${pilot.credits}   ·   TOP SPEED ${Math.round(105 * en.speedMult)}  ·  BOOST ${en.boostMax} (drain ×${en.boostDrain})  ·  ` +
-    `SHIELDS ${sh.cap} (regen ×${sh.regen})  ·  LASERS ${cn.label}  ·  TORPEDOES ${tp.count}`;
+    `⬡ ${pilot.credits}   ·   ${fr.label}  ·  TOP SPEED ${Math.round(105 * en.speedMult * fr.speed)}  ·  ` +
+    `AGILITY ×${fr.agility}  ·  BOOST ${Math.max(50, en.boostMax + fr.boost)}  ·  ` +
+    `SHIELDS ${Math.round(sh.cap * fr.shield)} (regen ×${sh.regen})  ·  ` +
+    `LASERS ${ship.userData.wingCannons.length}×${cn.dmg}  ·  TORPEDOES ${Math.max(2, Math.round(tp.count * fr.torpMult))}`;
 }
 document.querySelectorAll('#shipyard .seg [data-val]').forEach(b => b.addEventListener('click', () => {
   const key = b.closest('.seg').dataset.ship;
@@ -363,6 +375,7 @@ function toTitle() {
   input.releaseLock();
   state = 'title'; showScreen('title'); setPlayingUI(false);
   runner.stop();
+  systems.reset(difficulty);     // clears bolts, smoke, and lingering speed dust
   systems.clearHostiles();
   audio.stopEngine(); input.resetEdges();
   hud.setObjective('');
