@@ -27,6 +27,14 @@ export function createFlight(ship, input, audio) {
   // throttle ramp speed
   const opts = { sensitivity: 1, autoLevel: true, camBank: 0.5, throttleResp: 1 };
   function setOptions(o) { Object.assign(opts, o); }
+  // shipyard loadout: engine tuning
+  const stats = { speedMult: 1, boostMax: 100, boostDrain: 1 };
+  function setShipStats(s) {
+    Object.assign(stats, s);
+    state.energyMax = stats.boostMax;
+    state.energy = Math.min(state.energy, stats.boostMax);
+  }
+  state.energyMax = 100;
 
   const F = new THREE.Vector3(), R = new THREE.Vector3(), U = new THREE.Vector3();
   const V = new THREE.Vector3(), V2 = new THREE.Vector3();
@@ -47,7 +55,7 @@ export function createFlight(ship, input, audio) {
     ship.position.set(s.x, s.y, s.z);
     ship.quaternion.identity();              // facing -Z, toward the sector core
     ship.rotation.set(0, 0, 0);
-    state.speed = 60; state.throttle = 0.62; state.energy = 100;
+    state.speed = 60; state.throttle = 0.62; state.energy = stats.boostMax;
     state.warning = null; state.invuln = 0;
     state.landed = false; landPad = null; liftT = 0; auto = null;
     pitchRate = yawRate = rollRate = 0;
@@ -121,7 +129,7 @@ export function createFlight(ship, input, audio) {
     // ---- parked on a pad: hold flat, recharge, wait for throttle ----
     if (state.landed) {
       state.speed = 0; state.boosting = false;
-      state.energy = Math.min(100, state.energy + 22 * dt);
+      state.energy = Math.min(stats.boostMax, state.energy + 22 * dt);
       state.warning = null;
       pitchRate = yawRate = rollRate = 0;
       vectors();
@@ -144,11 +152,11 @@ export function createFlight(ship, input, audio) {
     }
 
     state.boosting = s.boost && state.energy > 0 && !auto;
-    if (state.boosting) state.energy = Math.max(0, state.energy - 30 * dt);
-    else state.energy = Math.min(100, state.energy + 14 * dt);
+    if (state.boosting) state.energy = Math.max(0, state.energy - 30 * stats.boostDrain * dt);
+    else state.energy = Math.min(stats.boostMax, state.energy + 14 * dt);
     // hover-capable worlds (city repulsors) can throttle all the way to zero
     const minS = world && world.canLand ? 0 : SPEED_MIN;
-    const targetSpeed = (minS + state.throttle * (SPEED_MIN + SPEED_SPAN - minS)) * (state.boosting ? BOOST_MULT : 1);
+    const targetSpeed = (minS + state.throttle * (SPEED_MIN + SPEED_SPAN - minS)) * stats.speedMult * (state.boosting ? BOOST_MULT : 1);
     state.speed += (targetSpeed - state.speed) * Math.min(1, 1.9 * dt);
     audio.setThrottle(state.throttle * 0.7 + (state.boosting ? 0.3 : 0));
 
@@ -328,6 +336,6 @@ export function createFlight(ship, input, audio) {
   function right(out) { return out.set(1, 0, 0).applyQuaternion(ship.quaternion); }
   function velocityInto(out) { return forward(out).multiplyScalar(state.speed); }
 
-  return { state, ship, setWorld, reset, update, updateCamera, forward, right, velocityInto, floorAt, setOptions, placeLanded,
+  return { state, ship, setWorld, reset, update, updateCamera, forward, right, velocityInto, floorAt, setOptions, setShipStats, placeLanded,
     startAutoLand, cancelAutoLand, get autoLanding() { return !!auto; } };
 }

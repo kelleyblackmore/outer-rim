@@ -182,12 +182,12 @@ export function createHud(canvas) {
 
   function updateFrame(run, flightState, snapshot, dt) {
     el.hull.style.transform = `scaleX(${Math.max(0, run.hull) / 100})`;
-    el.shield.style.transform = `scaleX(${Math.max(0, run.shields) / 100})`;
+    el.shield.style.transform = `scaleX(${Math.max(0, run.shields) / (run.shieldCap || 100)})`;
     el.score.textContent = run.score;
     el.time.textContent = fmtTime(run.time);
     el.torps.textContent = run.torps;
     el.throttle.style.transform = `scaleX(${Math.max(0.05, flightState.throttle)})`;
-    el.energy.style.transform = `scaleX(${Math.max(0, flightState.energy) / 100})`;
+    el.energy.style.transform = `scaleX(${Math.max(0, flightState.energy) / (flightState.energyMax || 100)})`;
 
     // lock readout
     if (run.lockTarget) {

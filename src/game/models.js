@@ -67,22 +67,39 @@ const M = {
   ringCold: emissive(0x3a7fd0, 1.1),
 };
 
-// ---------------- X-WING ----------------
-export function buildXWing() {
-  const g = new THREE.Group();
+// ---------------- X-WING (shipyard-configurable) ----------------
+const HULL_TONES = { light: 0xd7dde6, grey: 0x9aa2ae, dark: 0x565e6a };
 
-  // fuselage
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 3.0, 10), M.hull);
+// Rebuild the ship's contents inside the SAME Group, so every module holding a
+// reference (flight, systems, main) keeps working across a refit.
+export function refitXWing(g, cfg = {}) {
+  const stripeCol = new THREE.Color(cfg.stripe || '#d23b2f');
+  const glowCol = new THREE.Color(cfg.glow || '#59d4ff');
+  const hullTone = HULL_TONES[cfg.hull] || HULL_TONES.light;
+  const cannons = cfg.cannons || 'quad';
+
+  // clear the previous fit
+  while (g.children.length) {
+    const c = g.children[g.children.length - 1];
+    g.remove(c);
+    c.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  }
+
+  // per-ship materials (shared M stays untouched for other models)
+  const hullMat = new THREE.MeshStandardMaterial({ map: hullTex, color: hullTone, metalness: 0.55, roughness: 0.55 });
+  const stripeMat = new THREE.MeshStandardMaterial({ color: stripeCol, metalness: 0.3, roughness: 0.6 });
+  const glowMatEngine = () => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: glowCol, emissiveIntensity: 3.4, roughness: 0.4 });
+
+  // fuselage + nose
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 3.0, 10), hullMat);
   body.rotation.x = Math.PI / 2;
   g.add(body);
-
-  // nose cone
   const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.34, 1.5, 10), M.hullDk);
   nose.rotation.x = Math.PI / 2;
   nose.position.z = -2.15;
   g.add(nose);
 
-  // cockpit canopy + frame spine
+  // canopy + frame spine
   const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.glass);
   canopy.scale.set(1, 0.7, 1.5);
   canopy.position.set(0, 0.24, -0.5);
@@ -92,21 +109,21 @@ export function buildXWing() {
   g.add(spine);
 
   // squadron band on the nose
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.295, 0.315, 0.14, 10), M.red);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.295, 0.315, 0.14, 10), stripeMat);
   band.rotation.x = Math.PI / 2;
   band.position.set(0, 0, -1.72);
   g.add(band);
 
-  // astromech — blue dome droid behind the cockpit
+  // astromech — dome takes the squadron colour
   const r2 = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-    metal(0x3a6fd8, 0.4, 0.5));
+    new THREE.MeshStandardMaterial({ color: stripeCol, metalness: 0.4, roughness: 0.5 }));
   r2.position.set(0, 0.26, 0.35);
   g.add(r2);
   const r2eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), M.tieDk);
   r2eye.position.set(0, 0.36, 0.24);
   g.add(r2eye);
 
-  // engine block + 4 glowing thrusters at the rear
+  // engine block + 4 glowing thrusters
   const eBlock = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.8), M.hullDk);
   eBlock.position.z = 1.5;
   g.add(eBlock);
@@ -117,36 +134,40 @@ export function buildXWing() {
     const t = new THREE.Mesh(thrusterGeo, M.hullDk);
     t.rotation.x = Math.PI / 2; t.position.set(x, y, 1.85);
     g.add(t);
-    const gl = new THREE.Mesh(glowGeo, M.engine.clone());
+    const gl = new THREE.Mesh(glowGeo, glowMatEngine());
     gl.position.set(x, y, 2.03); gl.rotation.y = Math.PI;
     g.add(gl); engineNodes.push(gl);
   }
 
-  // 4 S-foil wings in X formation, each with a cannon at the tip
+  // S-foils. Cannon fit varies: quad/rapid arm all four tips, twin-heavy runs
+  // two fatter barrels on the upper foils.
   const wingCannons = [];
   const wingGeo = new THREE.BoxGeometry(2.4, 0.06, 0.9);
-  const cannonGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.4, 8);
+  const barrelR = cannons === 'twin' ? 0.085 : cannons === 'rapid' ? 0.04 : 0.05;
+  const cannonGeo = new THREE.CylinderGeometry(barrelR, barrelR, cannons === 'twin' ? 1.7 : 1.4, 8);
   const stripeGeo = new THREE.BoxGeometry(2.0, 0.07, 0.12);
   const configs = [
     { side: -1, up: 1 }, { side: 1, up: 1 }, { side: -1, up: -1 }, { side: 1, up: -1 },
   ];
   for (const c of configs) {
     const wing = new THREE.Group();
-    const panel = new THREE.Mesh(wingGeo, M.hull);
+    const panel = new THREE.Mesh(wingGeo, hullMat);
     panel.position.x = c.side * 1.3;
     wing.add(panel);
-    const stripe = new THREE.Mesh(stripeGeo, M.red);
+    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
     stripe.position.set(c.side * 1.55, 0.05, 0.2);
     wing.add(stripe);
-    const cannon = new THREE.Mesh(cannonGeo, M.hullDk);
-    cannon.rotation.x = Math.PI / 2;
-    cannon.position.set(c.side * 2.45, 0, -0.55);
-    wing.add(cannon);
-    // muzzle marker (used to spawn laser origins)
-    const muzzle = new THREE.Object3D();
-    muzzle.position.set(c.side * 2.45, 0, -1.3);
-    wing.add(muzzle);
-    wingCannons.push(muzzle);
+    const armed = cannons === 'twin' ? c.up === 1 : true;
+    if (armed) {
+      const cannon = new THREE.Mesh(cannonGeo, M.hullDk);
+      cannon.rotation.x = Math.PI / 2;
+      cannon.position.set(c.side * 2.45, 0, -0.55);
+      wing.add(cannon);
+      const muzzle = new THREE.Object3D();
+      muzzle.position.set(c.side * 2.45, 0, cannons === 'twin' ? -1.45 : -1.3);
+      wing.add(muzzle);
+      wingCannons.push(muzzle);
+    }
     wing.position.z = 0.9;
     wing.rotation.z = c.up * (c.side > 0 ? -0.28 : 0.28); // spread into an X
     g.add(wing);
@@ -159,7 +180,7 @@ export function buildXWing() {
   const trails = [];
   for (const [x, y] of [[-0.34, 0.26], [0.34, 0.26], [-0.34, -0.26], [0.34, -0.26]]) {
     const t = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({
-      color: 0x6fd8ff, transparent: true, opacity: 0.55, depthWrite: false,
+      color: glowCol, transparent: true, opacity: 0.55, depthWrite: false,
       blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
     t.position.set(x, y, 2.06);
     t.scale.z = 1.6;
@@ -169,8 +190,14 @@ export function buildXWing() {
   g.userData.engineNodes = engineNodes;
   g.userData.wingCannons = wingCannons;
   g.userData.trails = trails;
-  g.scale.setScalar(0.62);
   return cast(g);
+}
+
+export function buildXWing(cfg) {
+  const g = new THREE.Group();
+  refitXWing(g, cfg);
+  g.scale.setScalar(0.62);
+  return g;
 }
 
 // ---------------- TIE FIGHTER ----------------

@@ -218,10 +218,15 @@ export function createSystems(ctx) {
   function setWorld(w) { world = w; }
   function setOnKill(fn) { onKill = fn; }
 
+  // shipyard loadout: weapons + shields
+  const shipStats = { laserDmg: 1, laserCd: 0.115, torpCount: 6, torpTurn: 3.2, shieldCap: 100, shieldRegen: 1 };
+  function setShipStats(s) { Object.assign(shipStats, s); }
+
   function reset(diffName) {
     run.diff = DIFF[diffName] || DIFF.pilot;
-    run.hull = 100; run.shields = 100; run.score = 0; run.kills = 0; run.time = 0;
-    run.torps = 6; run.hurt = 0; run.shieldCd = 0; run.over = false;
+    run.hull = 100; run.shields = shipStats.shieldCap; run.shieldCap = shipStats.shieldCap;
+    run.score = 0; run.kills = 0; run.time = 0;
+    run.torps = shipStats.torpCount; run.hurt = 0; run.shieldCd = 0; run.over = false;
     run.lock = 0; run.locked = false; run.lockTarget = null;
     fireCd = 0; torpCd = 0; turretsSilent = false;
     pLasers.concat(eLasers).forEach(l => { l.active = false; l.mesh.visible = false; });
@@ -335,7 +340,8 @@ export function createSystems(ctx) {
   let fireCd = 0;
   function firePlayerLasers() {
     const cannons = ship.userData.wingCannons;
-    for (let i = 0; i < cannons.length; i++) cannons[i].getWorldPosition(_muzzle[i]);
+    const count = Math.min(cannons.length, _muzzle.length);
+    for (let i = 0; i < count; i++) cannons[i].getWorldPosition(_muzzle[i]);
     flight.forward(_fwd);
     let n = 0;
     for (const l of pLasers) {
@@ -344,7 +350,7 @@ export function createSystems(ctx) {
       l.vel.copy(_fwd).multiplyScalar(LASER_SPEED + flight.state.speed);
       l.mesh.quaternion.copy(ship.quaternion);
       l.active = true; l.mesh.visible = true; l.ttl = 1.5;
-      n++; if (n >= 4) break;
+      n++; if (n >= count) break;
     }
     audio.laser();
   }
@@ -566,7 +572,7 @@ export function createSystems(ctx) {
         if (e.kind === 'port' || e.shielded) continue;
         targetCenter(e, V3);
         if (segHit(l.prev, l.mesh.position, V3, e.r + 0.6)) {
-          e.hp -= 1;
+          e.hp -= shipStats.laserDmg;
           l.active = false; l.mesh.visible = false;
           spark(l.mesh.position);
           if (e.hp <= 0) killTarget(e); else audio.hit();
@@ -614,7 +620,7 @@ export function createSystems(ctx) {
       if (t.target && t.target.active) {
         targetCenter(t.target, V);
         V2.copy(V).sub(t.mesh.position).normalize();
-        t.dir.lerp(V2, Math.min(1, 3.2 * dt)).normalize();
+        t.dir.lerp(V2, Math.min(1, shipStats.torpTurn * dt)).normalize();
       }
       t.mesh.position.addScaledVector(t.dir, TORP_SPEED * dt);
       t.mesh.lookAt(V2.copy(t.mesh.position).add(t.dir));
@@ -789,7 +795,7 @@ export function createSystems(ctx) {
 
     // weapons
     fireCd -= dt; torpCd -= dt;
-    if (input.state.fire && fireCd <= 0) { firePlayerLasers(); fireCd = 0.115; }
+    if (input.state.fire && fireCd <= 0) { firePlayerLasers(); fireCd = shipStats.laserCd; }
     if (input.state.torpedoEdge) fireTorpedo();
 
     updateLock(dt);
@@ -804,7 +810,9 @@ export function createSystems(ctx) {
 
     // shield regen
     run.shieldCd -= dt;
-    if (run.shieldCd <= 0 && run.shields < 100) run.shields = Math.min(100, run.shields + run.diff.regen * dt);
+    if (run.shieldCd <= 0 && run.shields < run.shieldCap) {
+      run.shields = Math.min(run.shieldCap, run.shields + run.diff.regen * shipStats.shieldRegen * dt);
+    }
     if (run.hurt > 0) run.hurt -= dt;
 
     // hull damage reads as a smoke trail
@@ -919,7 +927,7 @@ export function createSystems(ctx) {
   }
 
   return {
-    run, reset, update, setWorld, setOnKill, hudSnapshot, hurtPlayer,
+    run, reset, update, setWorld, setOnKill, setShipStats, hudSnapshot, hurtPlayer,
     spawnTies, spawnProbes, spawnTurrets, spawnGenerators, spawnPort, spawnOscillator, setShielded, setTurretsSilent,
     setDustLevel,
     clearHostiles, aliveCount,

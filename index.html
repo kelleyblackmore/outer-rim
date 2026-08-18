@@ -159,6 +159,7 @@
         </div>
         <div class="row-under">
           <button id="how-btn" class="btn ghost">HOW TO FLY</button>
+          <button id="shipyard-btn" class="btn ghost">SHIPYARD</button>
           <button id="set-btn" class="btn ghost">SETTINGS</button>
           <div class="diff-row" role="group" aria-label="Difficulty">
             <button class="diff" data-diff="cadet">CADET</button>
@@ -241,6 +242,74 @@
         </div>
         <p class="hint-lock">Keep an enemy inside your reticle to build a <b>torpedo lock</b>. The gold diamond marks your next ring; the radar at the bottom shows hostiles around you. Watch your altitude — the <b>PULL UP</b> warning means terrain.</p>
         <button id="how-back" class="btn primary">GOT IT</button>
+      </div>
+
+      <div id="shipyard" class="screen hidden">
+        <h2 class="panel-title">SHIPYARD</h2>
+        <div class="setgrid shipgrid">
+          <div class="set-row">
+            <span class="set-label">SQUADRON STRIPE<i>wing markings, nose band &amp; droid</i></span>
+            <div class="seg" data-ship="stripe">
+              <button class="swatch" data-val="#d23b2f" style="background:#d23b2f" aria-label="Red"></button>
+              <button class="swatch" data-val="#e8b31a" style="background:#e8b31a" aria-label="Gold"></button>
+              <button class="swatch" data-val="#3fa46a" style="background:#3fa46a" aria-label="Green"></button>
+              <button class="swatch" data-val="#3a6fd8" style="background:#3a6fd8" aria-label="Blue"></button>
+              <button class="swatch" data-val="#8a4fd0" style="background:#8a4fd0" aria-label="Purple"></button>
+              <button class="swatch" data-val="#3c4250" style="background:#3c4250" aria-label="Shadow"></button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">ENGINE GLOW<i>thrusters &amp; exhaust trails</i></span>
+            <div class="seg" data-ship="glow">
+              <button class="swatch" data-val="#59d4ff" style="background:#59d4ff" aria-label="Ion blue"></button>
+              <button class="swatch" data-val="#7dff4a" style="background:#7dff4a" aria-label="Green"></button>
+              <button class="swatch" data-val="#ffb347" style="background:#ffb347" aria-label="Amber"></button>
+              <button class="swatch" data-val="#ff5a8a" style="background:#ff5a8a" aria-label="Crimson"></button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">HULL PLATING</span>
+            <div class="seg" data-ship="hull">
+              <button class="diff" data-val="light">LIGHT</button>
+              <button class="diff" data-val="grey">GREY</button>
+              <button class="diff" data-val="dark">DARK</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">ENGINES<i>speed vs boost reserve</i></span>
+            <div class="seg" data-ship="engine">
+              <button class="diff" data-val="balanced">BALANCED</button>
+              <button class="diff" data-val="interceptor">INTERCEPTOR</button>
+              <button class="diff" data-val="heavy">HEAVY</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">SHIELDS<i>capacity vs recharge rate</i></span>
+            <div class="seg" data-ship="shields">
+              <button class="diff" data-val="standard">STANDARD</button>
+              <button class="diff" data-val="reinforced">REINFORCED</button>
+              <button class="diff" data-val="recharger">RECHARGER</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">CANNONS<i>burst pattern &amp; punch</i></span>
+            <div class="seg" data-ship="cannons">
+              <button class="diff" data-val="quad">QUAD</button>
+              <button class="diff" data-val="twin">TWIN HEAVY</button>
+              <button class="diff" data-val="rapid">RAPID</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">TORPEDO RACK<i>count vs tracking</i></span>
+            <div class="seg" data-ship="torps">
+              <button class="diff" data-val="standard">STANDARD</button>
+              <button class="diff" data-val="extended">EXTENDED</button>
+              <button class="diff" data-val="seeker">SEEKER</button>
+            </div>
+          </div>
+        </div>
+        <div id="ship-stats" class="ship-stats"></div>
+        <button id="ship-back" class="btn primary">DONE</button>
       </div>
 
       <div id="pause" class="screen hidden">

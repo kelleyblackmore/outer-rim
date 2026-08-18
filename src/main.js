@@ -6,7 +6,7 @@ import { createHud } from './game/hud.js';
 import { createFlight } from './game/flight.js';
 import { createSystems } from './game/systems.js';
 import { buildWorld } from './game/world.js';
-import { buildXWing } from './game/models.js';
+import { buildXWing, refitXWing } from './game/models.js';
 import { MISSIONS, MISSION_ORDER, createMissionRunner } from './game/missions.js';
 
 const $ = id => document.getElementById(id);
@@ -140,6 +140,64 @@ for (const k of SLIDER_KEYS) {
 }
 applySettings();
 
+// ---------------- shipyard ----------------
+const SHIP_PARTS = {
+  engine: {
+    balanced: { speedMult: 1, boostMax: 100, boostDrain: 1 },
+    interceptor: { speedMult: 1.12, boostMax: 80, boostDrain: 1.35 },
+    heavy: { speedMult: 0.92, boostMax: 150, boostDrain: 0.8 },
+  },
+  shields: {
+    standard: { cap: 100, regen: 1 },
+    reinforced: { cap: 135, regen: 0.6 },
+    recharger: { cap: 80, regen: 1.7 },
+  },
+  cannons: {
+    quad: { dmg: 1, cd: 0.115, label: '4×1.0' },
+    twin: { dmg: 2.2, cd: 0.15, label: '2×2.2' },
+    rapid: { dmg: 0.6, cd: 0.075, label: '4×0.6 fast' },
+  },
+  torps: {
+    standard: { count: 6, turn: 3.2 },
+    extended: { count: 9, turn: 2.6 },
+    seeker: { count: 4, turn: 5.2 },
+  },
+};
+const SHIP_DEFAULT = { stripe: '#d23b2f', glow: '#59d4ff', hull: 'light',
+  engine: 'balanced', shields: 'standard', cannons: 'quad', torps: 'standard' };
+let shipCfg = { ...SHIP_DEFAULT };
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_PREFIX + 'ship') || 'null');
+  if (saved) shipCfg = { ...SHIP_DEFAULT, ...saved };
+} catch (e) { /* defaults stand */ }
+
+function applyShip() {
+  refitXWing(ship, shipCfg);
+  const en = SHIP_PARTS.engine[shipCfg.engine] || SHIP_PARTS.engine.balanced;
+  const sh = SHIP_PARTS.shields[shipCfg.shields] || SHIP_PARTS.shields.standard;
+  const cn = SHIP_PARTS.cannons[shipCfg.cannons] || SHIP_PARTS.cannons.quad;
+  const tp = SHIP_PARTS.torps[shipCfg.torps] || SHIP_PARTS.torps.standard;
+  flight.setShipStats({ speedMult: en.speedMult, boostMax: en.boostMax, boostDrain: en.boostDrain });
+  systems.setShipStats({ laserDmg: cn.dmg, laserCd: cn.cd, torpCount: tp.count, torpTurn: tp.turn,
+    shieldCap: sh.cap, shieldRegen: sh.regen });
+  document.querySelectorAll('#shipyard .seg').forEach(seg => {
+    const key = seg.dataset.ship;
+    seg.querySelectorAll('[data-val]').forEach(b => b.classList.toggle('sel', b.dataset.val === shipCfg[key]));
+  });
+  $('ship-stats').textContent =
+    `TOP SPEED ${Math.round(105 * en.speedMult)}  ·  BOOST ${en.boostMax} (drain ×${en.boostDrain})  ·  ` +
+    `SHIELDS ${sh.cap} (regen ×${sh.regen})  ·  LASERS ${cn.label}  ·  TORPEDOES ${tp.count}`;
+}
+document.querySelectorAll('#shipyard .seg [data-val]').forEach(b => b.addEventListener('click', () => {
+  const key = b.closest('.seg').dataset.ship;
+  shipCfg[key] = b.dataset.val;
+  localStorage.setItem(LS_PREFIX + 'ship', JSON.stringify(shipCfg));
+  applyShip();
+}));
+$('shipyard-btn').addEventListener('click', () => { state = 'shipyard'; showScreen('shipyard'); });
+$('ship-back').addEventListener('click', () => { state = 'title'; showScreen('title'); });
+applyShip();
+
 // ---------------- control bindings ----------------
 try {
   const saved = JSON.parse(localStorage.getItem(LS_PREFIX + 'bind') || 'null');
@@ -221,9 +279,10 @@ $('map-done').addEventListener('click', () => endMapper(false));
 // ---------------- state machine ----------------
 let state = 'loading';
 let currentMission = null;
-const screens = ['loading', 'title', 'howto', 'pause', 'result', 'settings'];
+const screens = ['loading', 'title', 'howto', 'pause', 'result', 'settings', 'shipyard'];
 function showScreen(name) {
   $('overlay').classList.toggle('hidden', name === null);
+  $('overlay').classList.toggle('bare', name === 'shipyard');
   screens.forEach(s => $(s).classList.toggle('hidden', s !== name));
 }
 function setPlayingUI(on) {
@@ -352,6 +411,19 @@ let idleT = 0;
 function idle(dt) {
   if (reduceMotion) dt = 0;
   idleT += dt;
+  if (state === 'shipyard') {
+    // turntable: ship parked, slowly rotating, camera in close
+    ship.position.set(0, 40, 620);
+    ship.rotation.set(0, idleT * 0.35, 0);
+    for (const n of ship.userData.engineNodes) n.material.emissiveIntensity = 2.6 + Math.sin(idleT * 30) * 0.3;
+    if (ship.userData.trails) for (const t of ship.userData.trails) { t.scale.z = 1.4; t.material.opacity = 0.4; }
+    const cam = engine.camera;
+    cam.up.set(0, 1, 0);
+    cam.position.set(ship.position.x - 4.6, ship.position.y + 2.1, ship.position.z + 7.6);
+    cam.lookAt(ship.position.x + 1.6, ship.position.y + 0.2, ship.position.z);
+    if (Math.abs(cam.fov - 55) > 0.01) { cam.fov = 55; cam.updateProjectionMatrix(); }
+    return;
+  }
   ship.position.set(
     Math.sin(idleT * 0.3) * 30,
     40 + Math.sin(idleT * 0.5) * 8,
