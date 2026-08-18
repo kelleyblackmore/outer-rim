@@ -140,9 +140,31 @@ export function createInput(canvas) {
   });
 
   // ---------- mouse (desktop steer + fire; not rebindable) ----------
+  // in flight the cursor is pointer-locked: steering comes from relative
+  // movement driving a virtual cursor. Esc releases the lock (and pauses).
+  let plVirt = null;
+  function requestLock() {
+    if (isTouch || !canvas.requestPointerLock) return;
+    try {
+      const p = canvas.requestPointerLock();
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) { /* unsupported / no gesture — absolute mouse still works */ }
+  }
+  function releaseLock() {
+    plVirt = null; mouse = null;
+    if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+  }
   if (!isTouch) {
     canvas.addEventListener('mousemove', e => {
       const r = canvas.getBoundingClientRect();
+      if (document.pointerLockElement === canvas) {
+        if (!plVirt) plVirt = { nx: 0, ny: 0 };
+        plVirt.nx = Math.max(-1, Math.min(1, plVirt.nx + e.movementX / (r.width * 0.35)));
+        plVirt.ny = Math.max(-1, Math.min(1, plVirt.ny + e.movementY / (r.height * 0.35)));
+        mouse = plVirt;
+        return;
+      }
+      plVirt = null;
       mouse = { nx: (e.clientX - r.left) / r.width * 2 - 1, ny: (e.clientY - r.top) / r.height * 2 - 1 };
     });
     canvas.addEventListener('mousedown', e => {
@@ -328,5 +350,6 @@ export function createInput(canvas) {
 
   return { state, update, resetEdges, clearAll, touchBtn, setMock, setOptions,
     setBinds, getBinds, resetBinds, assignBinding, assignThrottleAxis, captureNext, cancelCapture,
+    requestLock, releaseLock,
     get capturing() { return !!capture; } };
 }

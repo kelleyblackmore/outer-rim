@@ -123,29 +123,38 @@ export function refitXWing(g, cfg = {}) {
   r2eye.position.set(0, 0.36, 0.24);
   g.add(r2eye);
 
-  // engine block + 4 glowing thrusters
-  const eBlock = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.8), M.hullDk);
-  eBlock.position.z = 1.5;
-  g.add(eBlock);
-  const thrusterGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.34, 12);
-  const glowGeo = new THREE.CircleGeometry(0.15, 14);
-  const engineNodes = [];
-  for (const [x, y] of [[-0.34, 0.26], [0.34, 0.26], [-0.34, -0.26], [0.34, -0.26]]) {
-    const t = new THREE.Mesh(thrusterGeo, M.hullDk);
-    t.rotation.x = Math.PI / 2; t.position.set(x, y, 1.85);
-    g.add(t);
-    const gl = new THREE.Mesh(glowGeo, glowMatEngine());
-    gl.position.set(x, y, 2.03); gl.rotation.y = Math.PI;
-    g.add(gl); engineNodes.push(gl);
+  // dorsal spine + flank greeble strips + tail cap (the engines live on the
+  // wings where a real T-65 keeps them)
+  const dorsal = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 1.5), M.panel);
+  dorsal.position.set(0, 0.36, 0.75);
+  g.add(dorsal);
+  for (const s of [-1, 1]) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 1.9), M.panel);
+    strip.position.set(s * 0.38, 0.05, 0.4);
+    g.add(strip);
   }
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 0.5), M.hullDk);
+  tail.position.z = 1.62;
+  g.add(tail);
 
-  // S-foils. Cannon fit varies: quad/rapid arm all four tips, twin-heavy runs
+  const glowGeo = new THREE.CircleGeometry(0.16, 14);
+  const trailGeo = new THREE.ConeGeometry(0.13, 1, 8, 1, true);
+  trailGeo.rotateX(Math.PI / 2);          // apex toward +Z (astern)
+  trailGeo.translate(0, 0, 0.5);          // base at origin, tail at +1
+  const engineNodes = [];
+  const trails = [];
+
+  // S-foils with wing-root engine nacelles (intake ring forward, glow + trail
+  // astern). Cannon fit varies: quad/rapid arm all four tips, twin-heavy runs
   // two fatter barrels on the upper foils.
   const wingCannons = [];
   const wingGeo = new THREE.BoxGeometry(2.4, 0.06, 0.9);
   const barrelR = cannons === 'twin' ? 0.085 : cannons === 'rapid' ? 0.04 : 0.05;
   const cannonGeo = new THREE.CylinderGeometry(barrelR, barrelR, cannons === 'twin' ? 1.7 : 1.4, 8);
+  const tipGeo = new THREE.CylinderGeometry(barrelR * 1.7, barrelR * 1.7, 0.2, 8);
   const stripeGeo = new THREE.BoxGeometry(2.0, 0.07, 0.12);
+  const nacGeo = new THREE.CylinderGeometry(0.17, 0.17, 1.9, 10);
+  const intakeGeo = new THREE.TorusGeometry(0.17, 0.05, 8, 12);
   const configs = [
     { side: -1, up: 1 }, { side: 1, up: 1 }, { side: -1, up: -1 }, { side: 1, up: -1 },
   ];
@@ -157,12 +166,34 @@ export function refitXWing(g, cfg = {}) {
     const stripe = new THREE.Mesh(stripeGeo, stripeMat);
     stripe.position.set(c.side * 1.55, 0.05, 0.2);
     wing.add(stripe);
+    // engine nacelle at the wing root
+    const nac = new THREE.Mesh(nacGeo, M.hullDk);
+    nac.rotation.x = Math.PI / 2;
+    nac.position.set(c.side * 0.62, 0.04, 0.45);
+    wing.add(nac);
+    const intake = new THREE.Mesh(intakeGeo, M.tieDk);
+    intake.position.set(c.side * 0.62, 0.04, -0.52);
+    wing.add(intake);
+    const gl = new THREE.Mesh(glowGeo, glowMatEngine());
+    gl.position.set(c.side * 0.62, 0.04, 1.42);
+    gl.rotation.y = Math.PI;
+    wing.add(gl); engineNodes.push(gl);
+    const tr = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({
+      color: glowCol, transparent: true, opacity: 0.55, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    tr.position.set(c.side * 0.62, 0.04, 1.46);
+    tr.scale.z = 1.6;
+    wing.add(tr); trails.push(tr);
     const armed = cannons === 'twin' ? c.up === 1 : true;
     if (armed) {
       const cannon = new THREE.Mesh(cannonGeo, M.hullDk);
       cannon.rotation.x = Math.PI / 2;
       cannon.position.set(c.side * 2.45, 0, -0.55);
       wing.add(cannon);
+      const tip = new THREE.Mesh(tipGeo, M.tieDk);
+      tip.rotation.x = Math.PI / 2;
+      tip.position.set(c.side * 2.45, 0, cannons === 'twin' ? -1.32 : -1.18);
+      wing.add(tip);
       const muzzle = new THREE.Object3D();
       muzzle.position.set(c.side * 2.45, 0, cannons === 'twin' ? -1.45 : -1.3);
       wing.add(muzzle);
@@ -171,20 +202,6 @@ export function refitXWing(g, cfg = {}) {
     wing.position.z = 0.9;
     wing.rotation.z = c.up * (c.side > 0 ? -0.28 : 0.28); // spread into an X
     g.add(wing);
-  }
-
-  // engine exhaust trails — additive cones stretched by throttle/boost
-  const trailGeo = new THREE.ConeGeometry(0.13, 1, 8, 1, true);
-  trailGeo.rotateX(Math.PI / 2);          // apex toward +Z (astern)
-  trailGeo.translate(0, 0, 0.5);          // base at origin, tail at +1
-  const trails = [];
-  for (const [x, y] of [[-0.34, 0.26], [0.34, 0.26], [-0.34, -0.26], [0.34, -0.26]]) {
-    const t = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({
-      color: glowCol, transparent: true, opacity: 0.55, depthWrite: false,
-      blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-    t.position.set(x, y, 2.06);
-    t.scale.z = 1.6;
-    g.add(t); trails.push(t);
   }
 
   g.userData.engineNodes = engineNodes;
@@ -211,6 +228,16 @@ export function buildTIE() {
   const eye = new THREE.Mesh(new THREE.CircleGeometry(0.2, 8), M.tieGlow);
   eye.position.z = -0.63;
   g.add(eye);
+  // top hatch + twin chin guns
+  const hatch = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.1, 8), M.tieDk);
+  hatch.position.y = 0.6;
+  g.add(hatch);
+  for (const s of [-1, 1]) {
+    const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 6), M.tieDk);
+    gun.rotation.x = Math.PI / 2;
+    gun.position.set(s * 0.1, -0.3, -0.62);
+    g.add(gun);
+  }
   const wingGeo = new THREE.CylinderGeometry(1.15, 1.15, 0.08, 6);
   const strutGeo = new THREE.BoxGeometry(0.5, 0.16, 0.16);
   const spokeGeo = new THREE.BoxGeometry(0.05, 2.08, 0.05);

@@ -166,6 +166,16 @@ canvas#hud{position:absolute;inset:0;width:100%;height:100%;display:block;pointe
 .slider-wrap input[type=range]{width:150px;accent-color:var(--gold);cursor:pointer;}
 @media (max-width:520px){.set-row{flex-direction:column;align-items:flex-start;}}
 
+/* pilot progression */
+.pilot-line{font-family:var(--mono);font-size:11px;letter-spacing:2px;color:#9fb0c4;}
+.award{font-family:var(--mono);font-size:14px;letter-spacing:2px;color:var(--gold);}
+.promote{font-family:var(--mono);font-size:16px;letter-spacing:3px;color:var(--green);
+  text-shadow:0 0 14px rgba(87,255,143,.55);}
+.diff.locked{color:#c8a24a;border-color:rgba(255,211,77,.45);}
+.diff.deny{animation:deny .4s;}
+@keyframes deny{25%{transform:translateX(3px);border-color:var(--red);color:var(--red);}
+  75%{transform:translateX(-3px);border-color:var(--red);color:var(--red);}}
+
 /* shipyard */
 .swatch{width:26px;height:26px;border-radius:50%;border:2px solid rgba(120,180,240,.35);
   cursor:pointer;pointer-events:auto;padding:0;transition:transform .1s,border-color .15s;}

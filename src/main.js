@@ -140,6 +140,32 @@ for (const k of SLIDER_KEYS) {
 }
 applySettings();
 
+// ---------------- pilot profile (RPG) ----------------
+const RANKS = ['CADET', 'ENSIGN', 'LIEUTENANT', 'COMMANDER', 'CAPTAIN', 'WING COMMANDER', 'ACE', 'LEGEND'];
+const XP_T = [0, 800, 2000, 4000, 7000, 11000, 16000, 22000];
+let pilot = { xp: 0, credits: 0, kills: 0, wins: {}, owned: [] };
+try {
+  const p = JSON.parse(localStorage.getItem(LS_PREFIX + 'pilot') || 'null');
+  if (p) pilot = { ...pilot, ...p };
+} catch (e) { /* fresh pilot */ }
+const savePilot = () => localStorage.setItem(LS_PREFIX + 'pilot', JSON.stringify(pilot));
+const levelOf = xp => { let l = 0; for (let i = 0; i < XP_T.length; i++) if (xp >= XP_T[i]) l = i; return l; };
+const rankOf = xp => RANKS[Math.min(levelOf(xp), RANKS.length - 1)];
+function refreshPilotLine() {
+  const l = levelOf(pilot.xp);
+  const next = XP_T[l + 1];
+  $('pilot-line').textContent = `${rankOf(pilot.xp)} · LVL ${l + 1} · ${pilot.xp} XP` +
+    (next !== undefined ? `  (${next - pilot.xp} TO NEXT)` : '') + `  ·  ⬡ ${pilot.credits}`;
+}
+
+// parts that must be bought with mission credits
+const PART_COSTS = {
+  'engine:interceptor': 400, 'engine:heavy': 400,
+  'shields:reinforced': 350, 'shields:recharger': 350,
+  'cannons:twin': 450, 'cannons:rapid': 450,
+  'torps:extended': 300, 'torps:seeker': 500,
+};
+
 // ---------------- shipyard ----------------
 const SHIP_PARTS = {
   engine: {
@@ -170,6 +196,11 @@ try {
   const saved = JSON.parse(localStorage.getItem(LS_PREFIX + 'ship') || 'null');
   if (saved) shipCfg = { ...SHIP_DEFAULT, ...saved };
 } catch (e) { /* defaults stand */ }
+// an equipped part the pilot doesn't own reverts to stock
+for (const key of ['engine', 'shields', 'cannons', 'torps']) {
+  const costKey = key + ':' + shipCfg[key];
+  if (PART_COSTS[costKey] && !pilot.owned.includes(costKey)) shipCfg[key] = SHIP_DEFAULT[key];
+}
 
 function applyShip() {
   refitXWing(ship, shipCfg);
@@ -182,14 +213,39 @@ function applyShip() {
     shieldCap: sh.cap, shieldRegen: sh.regen });
   document.querySelectorAll('#shipyard .seg').forEach(seg => {
     const key = seg.dataset.ship;
-    seg.querySelectorAll('[data-val]').forEach(b => b.classList.toggle('sel', b.dataset.val === shipCfg[key]));
+    seg.querySelectorAll('[data-val]').forEach(b => {
+      b.classList.toggle('sel', b.dataset.val === shipCfg[key]);
+      const costKey = key + ':' + b.dataset.val;
+      const cost = PART_COSTS[costKey];
+      const locked = !!cost && !pilot.owned.includes(costKey);
+      if (!b.classList.contains('swatch')) {
+        if (!b.dataset.label) b.dataset.label = b.textContent;
+        b.textContent = locked ? `${b.dataset.label} ⬡${cost}` : b.dataset.label;
+      }
+      b.classList.toggle('locked', locked);
+    });
   });
   $('ship-stats').textContent =
-    `TOP SPEED ${Math.round(105 * en.speedMult)}  ·  BOOST ${en.boostMax} (drain ×${en.boostDrain})  ·  ` +
+    `⬡ ${pilot.credits}   ·   TOP SPEED ${Math.round(105 * en.speedMult)}  ·  BOOST ${en.boostMax} (drain ×${en.boostDrain})  ·  ` +
     `SHIELDS ${sh.cap} (regen ×${sh.regen})  ·  LASERS ${cn.label}  ·  TORPEDOES ${tp.count}`;
 }
 document.querySelectorAll('#shipyard .seg [data-val]').forEach(b => b.addEventListener('click', () => {
   const key = b.closest('.seg').dataset.ship;
+  // locked parts are bought with credits first
+  const costKey = key + ':' + b.dataset.val;
+  const cost = PART_COSTS[costKey];
+  if (cost && !pilot.owned.includes(costKey)) {
+    if (pilot.credits >= cost) {
+      pilot.credits -= cost;
+      pilot.owned.push(costKey);
+      savePilot();
+      refreshPilotLine();
+    } else {
+      b.classList.add('deny');
+      setTimeout(() => b.classList.remove('deny'), 420);
+      return;
+    }
+  }
   shipCfg[key] = b.dataset.val;
   localStorage.setItem(LS_PREFIX + 'ship', JSON.stringify(shipCfg));
   applyShip();
@@ -197,6 +253,7 @@ document.querySelectorAll('#shipyard .seg [data-val]').forEach(b => b.addEventLi
 $('shipyard-btn').addEventListener('click', () => { state = 'shipyard'; showScreen('shipyard'); });
 $('ship-back').addEventListener('click', () => { state = 'title'; showScreen('title'); });
 applyShip();
+refreshPilotLine();
 
 // ---------------- control bindings ----------------
 try {
@@ -303,12 +360,14 @@ function setWorldFor(id) {
 function toTitle() {
   hideMapper();
   warp = 0; engine.setWarp(0);
+  input.releaseLock();
   state = 'title'; showScreen('title'); setPlayingUI(false);
   runner.stop();
   systems.clearHostiles();
   audio.stopEngine(); input.resetEdges();
   hud.setObjective('');
   refreshBests();
+  refreshPilotLine();
   idleT = 0;
 }
 
@@ -321,6 +380,7 @@ function startMission(id) {
   runner.start(MISSIONS[id], world, engine.scene);
   input.resetEdges();
   state = 'playing'; showScreen(null); setPlayingUI(true);
+  input.requestLock();
 }
 
 function finish(won, failMsg) {
@@ -335,6 +395,23 @@ function finish(won, failMsg) {
   }
   const best = bestFor(currentMission);
   if (won && systems.run.score > best) localStorage.setItem(LS_PREFIX + 'best.' + currentMission, systems.run.score);
+
+  // pilot progression: XP from the score (quarter pay on a loss), credits cut,
+  // and a first-clear bonus per sector
+  const lvlBefore = levelOf(pilot.xp);
+  const gainedXp = won ? systems.run.score : Math.round(systems.run.score * 0.25);
+  const firstWin = won && !pilot.wins[currentMission];
+  const gainedCr = Math.round(gainedXp / 10) + (firstWin ? 200 : 0);
+  pilot.xp += gainedXp;
+  pilot.credits += gainedCr;
+  pilot.kills += systems.run.kills;
+  if (won) pilot.wins[currentMission] = true;
+  savePilot();
+  $('r-award').textContent = `+${gainedXp} XP  ·  +⬡${gainedCr}${firstWin ? '  (FIRST CLEAR +200)' : ''}`;
+  const promoted = levelOf(pilot.xp) > lvlBefore;
+  $('r-promote').classList.toggle('hidden', !promoted);
+  if (promoted) $('r-promote').textContent = '▲ PROMOTED — ' + rankOf(pilot.xp);
+
   const title = $('result-title');
   title.textContent = won ? (def.winTitle || 'SECTOR CLEAR') : (failMsg ? 'MISSION FAILED' : 'X-WING DOWN');
   title.classList.toggle('fail', !won);
@@ -349,13 +426,25 @@ function finish(won, failMsg) {
   $('next-btn').dataset.next = nextId;
   setPlayingUI(false);
   audio.stopEngine();
+  input.releaseLock();
   setTimeout(() => { if (state === 'result') showScreen('result'); }, won ? 700 : 900);
 }
 
 function togglePause(force) {
-  if (state === 'playing' && force !== false) { state = 'paused'; showScreen('pause'); audio.stopEngine(); input.clearAll(); }
-  else if (state === 'paused' && force !== true) { state = 'playing'; showScreen(null); audio.startEngine(); }
+  if (state === 'playing' && force !== false) {
+    state = 'paused'; showScreen('pause'); audio.stopEngine(); input.clearAll(); input.releaseLock();
+  } else if (state === 'paused' && force !== true) {
+    state = 'playing'; showScreen(null); audio.startEngine(); input.requestLock();
+  }
 }
+// Esc during pointer lock is consumed by the browser (no keydown): losing the
+// lock mid-flight IS the pause request
+document.addEventListener('pointerlockchange', () => {
+  if (state === 'playing' && document.pointerLockElement !== sceneCanvas && !input.state.isTouch) {
+    togglePause(true);
+  }
+});
+sceneCanvas.addEventListener('click', () => { if (state === 'playing') input.requestLock(); });
 
 // ---------------- menu wiring ----------------
 document.querySelectorAll('.mcard').forEach(b => b.addEventListener('click', () => startMission(b.dataset.mission)));
@@ -589,6 +678,7 @@ if (/[?&]debug\b/.test(location.search)) {
     },
     mock: m => input.setMock(m),
     settings, applySettings,
+    pilot, savePilot, applyShip,
     render: () => engine.render(),
     // manual sizing for hidden panes where window.innerWidth is 0
     resize: (w, h) => { engine.resize(w, h); hud.resize(w, h); },

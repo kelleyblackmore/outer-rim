@@ -670,67 +670,100 @@ function buildDeathstar(root, colliders, rng) {
 }
 
 // ---------------- STARKILLER BASE (oscillator assault) ----------------
+// Overcast, dark fir forests, and the weapon trench: a deep chasm running from
+// the horizon straight at the thermal oscillator — the attack run flies it.
 function buildStarkiller(root, colliders, rng, engine) {
   const n = makeNoise(7317);
   const OSC = { x: 0, z: -900 };
+  const TRENCH = { x: 0, halfW: 95, zStart: OSC.z + 190 };   // opens toward the spawn side
   const snow = (x, z) => {
     const field = n.fbm(x * 0.0012 + 5, z * 0.0012 + 11, 4) * 34;
     const ridgeMask = n.fbm(x * 0.00045 + 3, z * 0.00045 + 8, 3);
     const crest = ridgeMask > 0.6 ? n.ridge(x * 0.0015, z * 0.0015, 3) * 70 * ((ridgeMask - 0.6) / 0.4) : 0;
     return field + crest;
   };
+  const trenchCut = (x, z) => {
+    if (z < TRENCH.zStart) return 0;
+    const across = 1 - THREE.MathUtils.smoothstep(Math.abs(x - TRENCH.x), 42, TRENCH.halfW);
+    const lead = THREE.MathUtils.smoothstep(z, TRENCH.zStart, TRENCH.zStart + 240);
+    return -150 * across * lead;
+  };
   const heightFn = (x, z) => {
     const d = Math.hypot(x - OSC.x, z - OSC.z);
     const base = snow(x, z);
-    // flat apron sunk around the oscillator
+    // flat apron sunk around the oscillator, then the weapon trench cuts through
     const s = THREE.MathUtils.smoothstep(d, 200, 460);
-    return 6 * (1 - s) + base * s;
+    return 6 * (1 - s) + base * s + trenchCut(x, z);
   };
   const colorFn = (col, h, ny, x, z) => {
-    if (h > 55) col.setRGB(0.97, 0.98, 1.0);
-    else col.setRGB(0.88, 0.92, 0.97);
-    if (ny < 0.82) col.multiplyScalar(0.84).lerp(new THREE.Color(0.5, 0.62, 0.78), 0.22);
+    if (h < -35) {
+      // trench rock, darker with depth
+      const t = THREE.MathUtils.clamp((-h - 35) / 110, 0, 1);
+      col.setRGB(0.22 - t * 0.08, 0.22 - t * 0.07, 0.26 - t * 0.08);
+    } else if (h > 55) col.setRGB(0.82, 0.85, 0.9);
+    else col.setRGB(0.72, 0.77, 0.83);                      // overcast snow, not blinding
+    if (ny < 0.82) col.multiplyScalar(0.8).lerp(new THREE.Color(0.36, 0.44, 0.54), 0.25);
     col.multiplyScalar(0.94 + n.noise2(x * 0.03, z * 0.03) * 0.1);
   };
   root.add(makeTerrain(heightFn, colorFn));
 
-  // pine forest (clear of the base apron)
-  const treeGeo = new THREE.ConeGeometry(5, 18, 6);
-  const treeMat = new THREE.MeshStandardMaterial({ color: 0x1d3b2a, flatShading: true, roughness: 1 });
-  scatter(root, treeGeo, treeMat, 430, () => {
+  // dense dark fir forest (clear of the apron and the trench)
+  const inTrench = (x, z) => Math.abs(x - TRENCH.x) < TRENCH.halfW + 40 && z > TRENCH.zStart - 40;
+  const firGeo = new THREE.ConeGeometry(4.4, 22, 6);
+  const firMat = new THREE.MeshStandardMaterial({ color: 0x10231a, flatShading: true, roughness: 1 });
+  const firMat2 = new THREE.MeshStandardMaterial({ color: 0x0c1a12, flatShading: true, roughness: 1 });
+  const placeFir = () => {
     let x = 0, z = 0, tries = 0;
     do {
-      const a = rand(rng) * Math.PI * 2, r = 150 + rand(rng) * 1750;
+      const a = rand(rng) * Math.PI * 2, r = 150 + rand(rng) * 1800;
       x = Math.cos(a) * r; z = Math.sin(a) * r; tries++;
-    } while (Math.hypot(x - OSC.x, z - OSC.z) < 520 && tries < 8);
-    const sc = 0.7 + rand(rng) * 1.3;
-    return { x, y: heightFn(x, z) + 9 * sc - 1, z, ry: rand(rng) * 3, scale: sc };
-  }, null, null);
+    } while ((Math.hypot(x - OSC.x, z - OSC.z) < 520 || inTrench(x, z)) && tries < 10);
+    const sc = 0.7 + rand(rng) * 1.5;
+    return { x, y: heightFn(x, z) + 11 * sc - 1, z, ry: rand(rng) * 3, scale: sc };
+  };
+  scatter(root, firGeo, firMat, 420, placeFir, null, null);
+  scatter(root, firGeo, firMat2, 320, placeFir, null, null);
 
   // the fortress hull blocks flight — kept inside the vent radius (128) so
   // attack runs on the vent aren't clipped by the crash sphere
   colliders.push({ x: OSC.x, y: 40, z: OSC.z, r: 100 });
 
-  // sky + drainable sun
-  const dome = gradientSky(0x2c4f8c, 0x7ea6d8, 0xdfeefc);
+  // overcast sky + a pale, watery sun to drain
+  const dome = gradientSky(0x39414e, 0x596470, 0x8b95a0);
   root.add(dome);
-  const sun = makeSun('#ffffff', 'rgba(215,230,255,0.75)', 640, new THREE.Vector3(2400, 800, -1900));
+  const sun = makeSun('#e8edf2', 'rgba(190,200,214,0.55)', 400, new THREE.Vector3(2400, 700, -1900));
+  sun.userData.disc.material.opacity = 0.75;
+  sun.userData.streak.material.opacity = 0.18;
   root.add(sun);
-  root.add(makeStars(400, 0.4, 0.55));
 
-  // charge 0..1: the weapon drains the sun — sky dusks, light dies
-  const skyA = [new THREE.Color(0x2c4f8c), new THREE.Color(0x7ea6d8), new THREE.Color(0xdfeefc)];
-  const skyB = [new THREE.Color(0x1a1030), new THREE.Color(0x54344e), new THREE.Color(0x8a4a3e)];
-  const fogA = new THREE.Color(0xd8e8f8), fogB = new THREE.Color(0x584050);
+  // falling snow
+  const FLAKES = 600;
+  const fpos = new Float32Array(FLAKES * 3);
+  for (let i = 0; i < FLAKES; i++) {
+    fpos[i * 3] = (rand(rng) - 0.5) * 2800;
+    fpos[i * 3 + 1] = rand(rng) * 480;
+    fpos[i * 3 + 2] = (rand(rng) - 0.5) * 2800;
+  }
+  const fgeo = new THREE.BufferGeometry();
+  fgeo.setAttribute('position', new THREE.BufferAttribute(fpos, 3));
+  const flakes = new THREE.Points(fgeo, new THREE.PointsMaterial({ color: 0xdde4ec, size: 1.6,
+    sizeAttenuation: true, transparent: true, opacity: 0.55, depthWrite: false }));
+  flakes.frustumCulled = false;
+  root.add(flakes);
+
+  // charge 0..1: the weapon drains the sun — the overcast falls to a dead dusk
+  const skyA = [new THREE.Color(0x39414e), new THREE.Color(0x596470), new THREE.Color(0x8b95a0)];
+  const skyB = [new THREE.Color(0x140e22), new THREE.Color(0x3c2838), new THREE.Color(0x5c3430)];
+  const fogA = new THREE.Color(0x9aa5b0), fogB = new THREE.Color(0x44333c);
   const scratch = new THREE.Color();
   let lastApplied = -1;
   const setCharge = (t) => {
     t = THREE.MathUtils.clamp(t, 0, 1);
     const disc = sun.userData.disc, streak = sun.userData.streak;
-    disc.material.opacity = 1 - t * 0.72;
-    streak.material.opacity = 0.4 * (1 - t);
+    disc.material.opacity = 0.75 * (1 - t * 0.85);
+    streak.material.opacity = 0.18 * (1 - t);
     sun.scale.setScalar(1 - t * 0.35);
-    disc.material.color.setRGB(1, 1 - t * 0.45, 1 - t * 0.68);
+    disc.material.color.setRGB(0.91, 0.93 - t * 0.4, 0.95 - t * 0.62);
     const u = dome.material.uniforms;
     u.cTop.value.copy(skyA[0]).lerp(skyB[0], t);
     u.cMid.value.copy(skyA[1]).lerp(skyB[1], t);
@@ -738,10 +771,10 @@ function buildStarkiller(root, colliders, rng, engine) {
     if (Math.abs(t - lastApplied) > 0.02) {
       lastApplied = t;
       scratch.copy(fogA).lerp(fogB, t);
-      engine.setAtmosphere({ bg: scratch, fog: scratch, fogDensity: 0.0003 + t * 0.0002,
-        hemiSky: 0xdceeff, hemiGround: 0x8fb2cc, hemiI: 0.85 - t * 0.42,
-        keyColor: 0xffffff, keyI: 1.3 - t * 0.8, keyPos: [900, 400, -700],
-        fillColor: 0x5c88ff, fillI: 0.3, exposure: 1.1 - t * 0.12 });
+      engine.setAtmosphere({ bg: scratch, fog: scratch, fogDensity: 0.00045 + t * 0.0002,
+        hemiSky: 0x9fb0bd, hemiGround: 0x39414a, hemiI: 0.55 - t * 0.25,
+        keyColor: 0xd8e0e8, keyI: 0.7 - t * 0.4, keyPos: [900, 400, -700],
+        fillColor: 0x44506a, fillI: 0.25, exposure: 0.92 - t * 0.08 });
     }
   };
 
@@ -749,10 +782,18 @@ function buildStarkiller(root, colliders, rng, engine) {
     getHeight: heightFn,
     oscSite: { x: OSC.x, z: OSC.z },
     setCharge,
-    atmosphere: { bg: 0xd8e8f8, fog: 0xd8e8f8, fogDensity: 0.0003, hemiSky: 0xdceeff, hemiGround: 0x8fb2cc, hemiI: 0.85,
-      keyColor: 0xffffff, keyI: 1.3, keyPos: [900, 400, -700], fillColor: 0x5c88ff, fillI: 0.3, exposure: 1.1 },
+    atmosphere: { bg: 0x9aa5b0, fog: 0x9aa5b0, fogDensity: 0.00045, hemiSky: 0x9fb0bd, hemiGround: 0x39414a, hemiI: 0.55,
+      keyColor: 0xd8e0e8, keyI: 0.7, keyPos: [900, 400, -700], fillColor: 0x44506a, fillI: 0.25, exposure: 0.92 },
     spawn: { x: 0, y: heightFn(0, 900) + 110, z: 900 },
-    update: null,
+    update: (dt) => {
+      const a = fgeo.attributes.position;
+      for (let i = 0; i < FLAKES; i++) {
+        let y = a.getY(i) - (12 + (i % 4) * 3) * dt;
+        if (y < -160) y = 470;
+        a.setY(i, y);
+      }
+      a.needsUpdate = true;
+    },
   };
 }
 
